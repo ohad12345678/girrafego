@@ -1,4 +1,4 @@
-# app.py — ג'ירף – איכויות מזון (Landing 3×3 אמיתי במובייל + מטה עם טבחים דינמיים + מנה יומית מתעדכנת)
+# app.py — ג'ירף – איכויות מזון (Landing 3×3, מטה עם טבחים דינמיים, מנה יומית מתעדכנת)
 from __future__ import annotations
 import os, json, sqlite3
 from datetime import datetime
@@ -66,17 +66,15 @@ st.markdown("""
   --surface:#ffffff;
   --text:#0d0f12;
   --border:#e7ebf0;
-  --green-50:#ecfdf5;   /* ירוק בהיר בפנים */
+  --green-50:#ecfdf5;
   --green-100:#d1fae5;
   --green-500:#10b981;
 }
-
 html, body, .main, .block-container{direction:rtl; background:var(--bg);}
 .main .block-container{font-family:"Rubik",-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
-/* מסגרת שחורה עבה סביב כל הדף */
 body{ border:4px solid #000; border-radius:16px; margin:10px; }
 
-/* כותרת עליונה בתוך ריבוע ירוק עם גבול שחור דק (מרובע) */
+/* כותרת ירוקה עם גבול שחור דק (מרובע) */
 .header-min{
   background:var(--green-50);
   border:1px solid #000;
@@ -88,7 +86,7 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
 }
 .header-min .title{font-size:26px; font-weight:900; color:#000; margin:0;}
 
-/* קופסת "מנה יומית לבדיקה" בדף הכניסה — מרובעת, ממורכזת */
+/* "מנה יומית לבדיקה" */
 .daily-pick-login{
   background:#fff; border:2px solid var(--green-500);
   border-radius:0; padding:12px 16px;
@@ -98,29 +96,27 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
 .daily-pick-login .dish{font-weight:900; font-size:18px;}
 .daily-pick-login .avg{color:var(--green-500); font-weight:800;}
 
-/* Grid 3×3 אמיתי גם במובייל */
-.branch-grid{
-  display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
-}
-@media (max-width:480px){
-  .branch-grid{ grid-template-columns:repeat(3,1fr); } /* נשאר 3 גם במובייל צר */
+/* Grid 3×3 */
+.branch-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+@media (max-width:480px){ .branch-grid{ grid-template-columns:repeat(3,1fr);} }
+
+a.branch-card, .branch-card:link, .branch-card:visited, .branch-card:hover, .branch-card:active{
+  color:#000 !important; text-decoration:none !important;
 }
 .branch-card{
   display:flex; align-items:center; justify-content:center;
-  background:var(--green-50); color:#000; text-decoration:none;
+  background:var(--green-50);
   border:2px solid #000; border-radius:12px; padding:18px 8px;
   font-weight:900; min-height:64px; user-select:none;
   box-shadow:0 4px 14px rgba(0,0,0,.06);
 }
-.branch-card:active{ transform: translateY(1px); }
 
-/* Status chip */
+/* מצב נוכחי */
 .status-min{display:flex; align-items:center; gap:10px; justify-content:center; background:#fff;
   border:1px solid var(--border); border-radius:14px; padding:10px 12px; margin:12px 0;}
 .chip{padding:4px 10px; border:1px solid var(--green-100); border-radius:999px;
   font-weight:800; font-size:12px; color:#065f46; background:var(--green-50)}
 
-/* שדות */
 .stTextInput input, .stTextArea textarea{
   background:#fff !important; color:#000 !important;
   border-radius:12px !important; border:1px solid var(--border) !important; padding:10px 12px !important;}
@@ -129,10 +125,9 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
   border-radius:12px !important; border:1px solid var(--border) !important;}
 .stTextInput input:focus, .stTextArea textarea:focus, .stSelectbox [data-baseweb="select"]:focus-within{
   outline:none !important; box-shadow:0 0 0 2px rgba(16,185,129,.25) !important; border-color:var(--green-500) !important;}
-/* רדיו שחור מלא */
 .stRadio [data-baseweb="radio"] svg{ color:#000 !important; fill:#000 !important; }
 
-/* select ייפתח למטה */
+/* פתיחת ה-select למטה */
 .stSelectbox {overflow:visible !important;}
 div[data-baseweb="select"] + div[role="listbox"]{ bottom:auto !important; top: calc(100% + 8px) !important; max-height:50vh !important; }
 
@@ -295,7 +290,6 @@ def network_best_worst_dish_last7(df: pd.DataFrame, min_n: int
 # ------ QUERY PARAMS -----
 # =========================
 def qp_get(key: str) -> Optional[str]:
-    # תמיכה בגרסאות שונות של סטרימליט
     try:
         return st.query_params.get(key)
     except Exception:
@@ -316,11 +310,19 @@ def qp_clear():
     except Exception:
         st.experimental_set_query_params()
 
+def safe_rerun():
+    try:
+        st.rerun()
+    except Exception:
+        try:
+            st.experimental_rerun()
+        except Exception:
+            pass
+
 # =========================
 # ------ LOGIN / AUTH -----
 # =========================
 def render_landing():
-    # כותרת + מנה יומית
     st.markdown('<div class="header-min"><p class="title">ג׳ירף – איכויות מזון</p></div>', unsafe_allow_html=True)
 
     df_login = load_df()
@@ -335,8 +337,7 @@ def render_landing():
         st.markdown("<div class='daily-pick-login'><div class='ttl'>מנה יומית לבדיקה</div><div class='dish'>—</div></div>",
                     unsafe_allow_html=True)
 
-    # Grid 3×3 אמיתי — לינקים עם פרמטר URL
-    items = ["מטה"] + BRANCHES  # 9 פריטים
+    items = ["מטה"] + BRANCHES
     links = "".join([f"<a class='branch-card' href='?select={item}'>{item}</a>" for item in items])
     st.markdown(f"<div class='branch-grid'>{links}</div>", unsafe_allow_html=True)
 
@@ -348,17 +349,15 @@ def consume_select_param():
         st.session_state.auth = {"role": "meta", "branch": None}
     elif sel in BRANCHES:
         st.session_state.auth = {"role": "branch", "branch": sel}
-    # ניקוי ה-URL והפעלה מחדש
     qp_clear()
-    st.experimental_rerun()
-    return True  # לא יגיע לכאן
+    safe_rerun()
+    return True
 
 def require_auth() -> dict:
     if "auth" not in st.session_state:
         st.session_state.auth = {"role": None, "branch": None}
     auth = st.session_state.auth
 
-    # אם יש בחירה דרך ה-URL — נטפל מייד
     if consume_select_param():
         st.stop()
 
@@ -378,7 +377,7 @@ st.markdown(f'<div class="status-min"><span class="chip">{chip}</span></div>', u
 
 df = load_df()
 
-# ===== בחירת סניף להזנה במטה — מחוץ לטופס =====
+# בחירת סניף להזנה (מטה)
 if auth["role"] == "meta":
     st.markdown("#### בחירת סניף להזנה (מטה)")
     st.selectbox("בחר/י סניף להזנה", options=["— בחר —"] + BRANCHES, index=0, key="meta_branch_select")
@@ -393,14 +392,12 @@ with st.form("quality_form", clear_on_submit=False):
 
     col1, col2 = st.columns(2)
 
-    # 1) רשימת טבחים מוגדרת מראש לפי הסניף
     with col1:
         chef_options = ["— בחר —"]
         if selected_branch and selected_branch != "— בחר —":
             chef_options += CHEFS_BY_BRANCH.get(selected_branch, [])
         chef_choice = st.selectbox("שם הטבח (מרשימה)", options=chef_options, index=0, key="chef_from_list")
 
-    # 2) הקלדה ידנית (לא חובה)
     with col2:
         chef_manual = st.text_input("שם הטבח — הקלדה ידנית (לא חובה)", value="", key="chef_manual_input")
 
@@ -419,17 +416,11 @@ with st.form("quality_form", clear_on_submit=False):
     submitted = st.form_submit_button("שמור בדיקה")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# ולידציה ושמירה
 if submitted:
     if auth["role"] == "meta" and (not selected_branch or selected_branch == "— בחר —"):
         st.error("נא לבחור סניף להזנה.")
     else:
-        chef_final = None
-        if chef_manual.strip():
-            chef_final = chef_manual.strip()
-        elif chef_choice and chef_choice != "— בחר —":
-            chef_final = chef_choice
-
+        chef_final = chef_manual.strip() if chef_manual.strip() else (chef_choice if chef_choice != "— בחר —" else None)
         if not chef_final:
             st.error("נא לבחור שם טבח מהרשימה או להקליד ידנית.")
         elif not dish or dish == "— בחר —":
@@ -458,7 +449,6 @@ def weekly_branch_params(df: pd.DataFrame, branch: str,
                 "worst_dish_name": (None, None), "n_week": 0, "n_last": 0}
 
     now = pd.Timestamp.now(tz="UTC")
-    # תחילת השבוע (יום שני/ראשון — כאן לפי dayofweek: שני=0; מתאים להשוואה עקבית)
     w_start = (now - pd.Timedelta(days=int(now.dayofweek))).normalize()
     w_end = w_start + pd.Timedelta(days=7)
     lw_start = w_start - pd.Timedelta(days=7)
@@ -625,7 +615,6 @@ if auth["role"] == "meta" and not df.empty:
              f"{worst_dish[0]} · <span class='num-green'>{worst_dish[1]:.2f}</span> (N={worst_dish[2]})")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # סיכומים לפי סניף מתחת ל-KPI
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### סיכום שבועי לפי סניף")
     for b in BRANCHES:
@@ -688,7 +677,6 @@ else:
     st.info("אין נתונים לניתוח עדיין.")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# כרטיס 2 — שאל את אוהד
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### שאל את אוהד")
 user_q = st.text_input("שאלה על הנתונים", value="")
