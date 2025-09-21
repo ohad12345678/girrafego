@@ -1,8 +1,7 @@
-# app.py — ג'ירף – איכויות מזון (כפתורי סניפים בדף פתיחה, סיכום שבועי, GPT)
-
+# app.py — ג'ירף – איכויות מזון (דף פתיחה 3×3 קוביות ירוקות עם גבול שחור + כל הפונקציות)
 from __future__ import annotations
 import os, json, sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Optional, Tuple, Dict, Any
 
 import pandas as pd
@@ -67,9 +66,8 @@ st.markdown("""
   --bg:#ffffff;
   --surface:#ffffff;
   --text:#0d0f12;
-  --muted:#6b7280;
   --border:#e7ebf0;
-  --green-50:#ecfdf5;
+  --green-50:#ecfdf5;   /* ירוק בהיר בפנים */
   --green-100:#d1fae5;
   --green-500:#10b981;
 }
@@ -79,22 +77,19 @@ html, body, .main, .block-container{direction:rtl; background:var(--bg);}
 /* מסגרת שחורה עבה סביב כל הדף */
 body{ border:4px solid #000; border-radius:16px; margin:10px; }
 
-/* כותרת עליונה – ירקרק */
+/* כותרת עליונה בתוך ריבוע ירוק עם גבול שחור דק (מרובע) */
 .header-min{
   background:var(--green-50);
-  border:1px solid var(--green-100);
-  border-radius:18px; padding:18px;
+  border:1px solid #000;         /* גבול שחור דק */
+  border-radius:0;               /* מרובע */
+  padding:16px;
+  margin-bottom:14px;
+  text-align:center;
   box-shadow:0 6px 22px rgba(0,0,0,.04);
-  margin-bottom:14px; text-align:center;
 }
-.header-min .title{font-size:26px; font-weight:900; color:var(--text); margin:0;}
+.header-min .title{font-size:26px; font-weight:900; color:#000; margin:0;}
 
-.status-min{display:flex; align-items:center; gap:10px; justify-content:center; background:#fff;
-  border:1px solid var(--border); border-radius:14px; padding:10px 12px; margin:12px 0;}
-.chip{padding:4px 10px; border:1px solid var(--green-100); border-radius:999px;
-  font-weight:800; font-size:12px; color:#065f46; background:var(--green-50)}
-
-/* קופסת מנה יומית */
+/* קופסת "מנה יומית לבדיקה" בדף הכניסה — מרובעת, ממורכזת */
 .daily-pick-login{
   background:#fff; border:2px solid var(--green-500);
   border-radius:0; padding:12px 16px;
@@ -107,16 +102,21 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
 .card{background:var(--surface); border:1px solid var(--border); border-radius:16px;
   padding:16px; box-shadow:0 4px 18px rgba(10,20,40,.04); margin-bottom:12px;}
 
+.status-min{display:flex; align-items:center; gap:10px; justify-content:center; background:#fff;
+  border:1px solid var(--border); border-radius:14px; padding:10px 12px; margin:12px 0;}
+.chip{padding:4px 10px; border:1px solid var(--green-100); border-radius:999px;
+  font-weight:800; font-size:12px; color:#065f46; background:var(--green-50)}
+
 /* שדות */
 .stTextInput input, .stTextArea textarea{
-  background:#fff !important; color:var(--text) !important;
+  background:#fff !important; color:#000 !important;
   border-radius:12px !important; border:1px solid var(--border) !important; padding:10px 12px !important;}
 .stTextArea textarea{min-height:96px !important;}
-.stSelectbox div[data-baseweb="select"]{background:#fff !important; color:var(--text) !important;
+.stSelectbox div[data-baseweb="select"]{background:#fff !important; color:#000 !important;
   border-radius:12px !important; border:1px solid var(--border) !important;}
 .stTextInput input:focus, .stTextArea textarea:focus, .stSelectbox [data-baseweb="select"]:focus-within{
   outline:none !important; box-shadow:0 0 0 2px rgba(16,185,129,.25) !important; border-color:var(--green-500) !important;}
-/* רדיו/בחירות */
+/* רדיו שחור מלא */
 .stRadio [data-baseweb="radio"] svg{ color:#000 !important; fill:#000 !important; }
 
 /* select ייפתח למטה */
@@ -127,19 +127,20 @@ div[data-baseweb="select"] + div[role="listbox"]{ bottom:auto !important; top: c
 table.small {width:100%; border-collapse:collapse;}
 table.small thead tr{ background:var(--green-50); }
 table.small th, table.small td {border-bottom:1px solid #f1f1f1; padding:8px; font-size:14px; text-align:center;}
-table.small th {font-weight:900; color:var(--text);}
+table.small th {font-weight:900; color:#000;}
 .num-green{color:var(--green-500); font-weight:700;}
 
 /* הסתרת “Press Enter to apply” */
 div[data-testid="stWidgetInstructions"]{display:none !important;}
 
-/* כפתורי סניפים בדף פתיחה */
+/* כפתורי סניפים: קוביות ירוקות עם גבול שחור, טקסט שחור */
 .branch-btn button{
-  width:100%; background:#fff; border:2px solid var(--green-100);
-  border-radius:16px; padding:14px 10px; font-weight:800; color:#065f46;
+  width:100%; background:var(--green-50); color:#000;
+  border:2px solid #000; border-radius:12px;
+  padding:16px 10px; font-weight:800;
   box-shadow:0 4px 14px rgba(0,0,0,.06);
 }
-.branch-btn button:hover{ border-color:var(--green-500); }
+.branch-btn button:hover{ filter:brightness(0.98); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -189,11 +190,11 @@ def load_df() -> pd.DataFrame:
     return df
 
 def _get_sheet_id() -> Optional[str]:
-    sheet_id = st.secrets.get("GOOGLE_SHEET_ID") or os.getenv("GOOGLE_SHEET_ID")
-    if sheet_id: return sheet_id
-    sheet_url = st.secrets.get("GOOGLE_SHEET_URL") or os.getenv("GOOGLE_SHEET_URL")
-    if sheet_url and "/spreadsheets/d/" in sheet_url:
-        try: return sheet_url.split("/spreadsheets/d/")[1].split("/")[0]
+    sid = st.secrets.get("GOOGLE_SHEET_ID") or os.getenv("GOOGLE_SHEET_ID")
+    if sid: return sid
+    url = st.secrets.get("GOOGLE_SHEET_URL") or os.getenv("GOOGLE_SHEET_URL")
+    if url and "/spreadsheets/d/" in url:
+        try: return url.split("/spreadsheets/d/")[1].split("/")[0]
         except Exception: return None
     return None
 
@@ -235,7 +236,7 @@ def refresh_df():
 def score_hint(x: int) -> str:
     return "חלש" if x <= 3 else ("סביר" if x <= 6 else ("טוב" if x <= 8 else "מצוין"))
 
-# === מסנני 7 ימים ===
+# === 7 ימים אחרונים ===
 def last7(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty: return df
     start = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=7)
@@ -290,13 +291,11 @@ def network_best_worst_dish_last7(df: pd.DataFrame, min_n: int
 # ------ LOGIN / AUTH -----
 # =========================
 def branch_button(label: str, key: str) -> bool:
-    # עיטוף כפתור בסגנון "קוביה"
     with st.container():
-        with st.container():
-            st.markdown('<div class="branch-btn">', unsafe_allow_html=True)
-            clicked = st.button(label, key=key, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-            return clicked
+        st.markdown('<div class="branch-btn">', unsafe_allow_html=True)
+        clicked = st.button(label, key=key, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        return clicked
 
 def require_auth() -> dict:
     if "auth" not in st.session_state:
@@ -319,20 +318,20 @@ def require_auth() -> dict:
             st.markdown("<div class='daily-pick-login'><div class='ttl'>מנה יומית לבדיקה</div><div class='dish'>—</div></div>",
                         unsafe_allow_html=True)
 
+        # רשימת קוביות – 3×3 (מטה + 8 סניפים)
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("#### בחר/י סניף או מטה")
-        # גריד כפתורים: 3 בטור
-        items = ["מטה"] + BRANCHES
-        cols = st.columns(3)
-        for i, name_ in enumerate(items):
-            col = cols[i % 3]
-            with col:
-                if branch_button(name_, key=f"btn_{name_}"):
-                    if name_ == "מטה":
-                        st.session_state.auth = {"role": "meta", "branch": None}
-                    else:
-                        st.session_state.auth = {"role": "branch", "branch": name_}
-                    st.rerun()
+        items = ["מטה"] + BRANCHES  # 9 פריטים = 3×3
+        for start in range(0, len(items), 3):
+            cols = st.columns(3)
+            for j, name_ in enumerate(items[start:start+3]):
+                with cols[j]:
+                    if branch_button(name_, key=f"btn_{name_}"):
+                        if name_ == "מטה":
+                            st.session_state.auth = {"role": "meta", "branch": None}
+                        else:
+                            st.session_state.auth = {"role": "branch", "branch": name_}
+                        st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
         st.stop()
     return auth
@@ -452,17 +451,14 @@ def weekly_branch_params(df: pd.DataFrame, branch: str,
         return (str(best_row["chef_name"]), float(best_row["avg"])), (str(worst_row["chef_name"]), float(worst_row["avg"]))
 
     def _dish_best_worst(frame: pd.DataFrame, min_count: int) -> Tuple[Optional[str], Optional[str]]:
-        if frame.empty:
-            return None, None
+        if frame.empty: return None, None
         g = frame.groupby("dish_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
         g = g[g["n"] >= min_count]
-        if g.empty:
-            return None, None
+        if g.empty: return None, None
         best_row  = g.loc[g["avg"].idxmax()]
         worst_row = g.loc[g["avg"].idxmin()]
         best, worst = str(best_row["dish_name"]), str(worst_row["dish_name"])
-        if best == worst:
-            return best, None
+        if best == worst: return best, None
         return best, worst
 
     (best_name_w, best_avg_w), (best_name_lw, best_avg_lw) = _chef_best_worst(sw,  MIN_CHEF_WEEK_M)
@@ -492,7 +488,6 @@ def wow_delta(curr: Optional[float], prev: Optional[float]) -> str:
 def fmt_num(v: Optional[float]) -> str:
     return "—" if v is None else f"<span class='num-green'>{v:.2f}</span>"
 
-# ===== הצגת סיכום שבועי =====
 def render_weekly_summary_for_branch(df: pd.DataFrame, branch: str):
     m = weekly_branch_params(df, branch, MIN_CHEF_WEEK_M, MIN_DISH_WEEK_M)
     avg_w,  avg_lw  = m["avg"]
@@ -608,7 +603,7 @@ if auth["role"] == "meta" and not df.empty:
             render_weekly_summary_for_branch(df, b)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- BRANCH weekly summary (חזר) ---
+# --- BRANCH weekly summary ---
 if auth["role"] == "branch" and not df.empty:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown(f"### סיכום שבועי — {auth['branch']}")
