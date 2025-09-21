@@ -1,4 +1,4 @@
-# app.py — ג'ירף – איכויות מזון (Landing 3×3, מטה עם טבחים דינמיים, מנה יומית מתעדכנת)
+# app.py — ג'ירף – איכויות מזון (Landing עם רקע ענברי, קוביות ירוקות בהירות חדשות, Daily Pick טרי בכל כניסה)
 from __future__ import annotations
 import os, json, sqlite3
 from datetime import datetime
@@ -66,15 +66,17 @@ st.markdown("""
   --surface:#ffffff;
   --text:#0d0f12;
   --border:#e7ebf0;
-  --green-50:#ecfdf5;
+  --green-50:#ecfdf5;      /* ירוק עדין כללי */
+  --tile-green:#d7fde7;    /* ירוק בהיר חדש לקוביות */
   --green-100:#d1fae5;
   --green-500:#10b981;
+  --amber:#FFE07A;         /* צהבהב-כתמתם לכותרת בעמוד הפתיחה */
 }
 html, body, .main, .block-container{direction:rtl; background:var(--bg);}
 .main .block-container{font-family:"Rubik",-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
 body{ border:4px solid #000; border-radius:16px; margin:10px; }
 
-/* כותרת ירוקה עם גבול שחור דק (מרובע) */
+/* כותרות */
 .header-min{
   background:var(--green-50);
   border:1px solid #000;
@@ -84,7 +86,16 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
   text-align:center;
   box-shadow:0 6px 22px rgba(0,0,0,.04);
 }
-.header-min .title{font-size:26px; font-weight:900; color:#000; margin:0;}
+.header-landing{ /* בעמוד הפתיחה בלבד – צהבהב כתמתם */
+  background:var(--amber);
+  border:1px solid #000;
+  border-radius:0;
+  padding:16px;
+  margin-bottom:14px;
+  text-align:center;
+  box-shadow:0 6px 22px rgba(0,0,0,.04);
+}
+.header-min .title, .header-landing .title{font-size:26px; font-weight:900; color:#000; margin:0;}
 
 /* "מנה יומית לבדיקה" */
 .daily-pick-login{
@@ -105,7 +116,7 @@ a.branch-card, .branch-card:link, .branch-card:visited, .branch-card:hover, .bra
 }
 .branch-card{
   display:flex; align-items:center; justify-content:center;
-  background:var(--green-50);
+  background:var(--tile-green);
   border:2px solid #000; border-radius:12px; padding:18px 8px;
   font-weight:900; min-height:64px; user-select:none;
   box-shadow:0 4px 14px rgba(0,0,0,.06);
@@ -127,7 +138,7 @@ a.branch-card, .branch-card:link, .branch-card:visited, .branch-card:hover, .bra
   outline:none !important; box-shadow:0 0 0 2px rgba(16,185,129,.25) !important; border-color:var(--green-500) !important;}
 .stRadio [data-baseweb="radio"] svg{ color:#000 !important; fill:#000 !important; }
 
-/* פתיחת ה-select למטה */
+/* לפתוח Select למטה */
 .stSelectbox {overflow:visible !important;}
 div[data-baseweb="select"] + div[role="listbox"]{ bottom:auto !important; top: calc(100% + 8px) !important; max-height:50vh !important; }
 
@@ -178,6 +189,18 @@ init_db()
 # =========================
 @st.cache_data(ttl=15)
 def load_df() -> pd.DataFrame:
+    c = conn()
+    df = pd.read_sql_query(
+        "SELECT id, branch, chef_name, dish_name, score, notes, created_at FROM food_quality ORDER BY created_at DESC",
+        c,
+    )
+    c.close()
+    if "created_at" in df.columns:
+        df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True)
+    return df
+
+# טעינה טרייה – לעקוף cache כשנכנסים לעמוד הפתיחה כדי שהמנה היומית תהיה עדכנית
+def load_df_fresh() -> pd.DataFrame:
     c = conn()
     df = pd.read_sql_query(
         "SELECT id, branch, chef_name, dish_name, score, notes, created_at FROM food_quality ORDER BY created_at DESC",
@@ -320,12 +343,14 @@ def safe_rerun():
             pass
 
 # =========================
-# ------ LOGIN / AUTH -----
+# ------ LANDING ----------
 # =========================
 def render_landing():
-    st.markdown('<div class="header-min"><p class="title">ג׳ירף – איכויות מזון</p></div>', unsafe_allow_html=True)
+    # כותרת בעמוד פתיחה – ענבר
+    st.markdown('<div class="header-landing"><p class="title">ג׳ירף – איכויות מזון</p></div>', unsafe_allow_html=True)
 
-    df_login = load_df()
+    # מנה יומית טרייה (לעקוף cache בכל כניסה)
+    df_login = load_df_fresh()
     name, avg, n = worst_network_dish_last7(df_login, MIN_DISH_WEEK_M)
     if name:
         st.markdown(
@@ -337,6 +362,7 @@ def render_landing():
         st.markdown("<div class='daily-pick-login'><div class='ttl'>מנה יומית לבדיקה</div><div class='dish'>—</div></div>",
                     unsafe_allow_html=True)
 
+    # קוביות 3×3
     items = ["מטה"] + BRANCHES
     links = "".join([f"<a class='branch-card' href='?select={item}'>{item}</a>" for item in items])
     st.markdown(f"<div class='branch-grid'>{links}</div>", unsafe_allow_html=True)
@@ -371,6 +397,7 @@ auth = require_auth()
 # =========================
 # -------- MAIN UI --------
 # =========================
+# כותרת פנימית רגילה (ירקרקה עדינה)
 st.markdown('<div class="header-min"><p class="title">ג׳ירף – איכויות מזון</p></div>', unsafe_allow_html=True)
 chip = auth["branch"] if auth["role"] == "branch" else "מטה"
 st.markdown(f'<div class="status-min"><span class="chip">{chip}</span></div>', unsafe_allow_html=True)
