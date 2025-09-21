@@ -8,7 +8,6 @@ from typing import List, Optional, Tuple, Dict, Any
 
 import pandas as pd
 import streamlit as st
-import altair as alt  # נשאר לשימוש עתידי (אין כרגע גרפים)
 
 # ===== Google Sheets (אופציונלי) =====
 try:
@@ -23,7 +22,6 @@ except Exception:
 # =========================
 st.set_page_config(page_title="ג'ירף מטבחים – איכויות מזון", layout="wide")
 
-# נתונים קבועים
 BRANCHES: List[str] = ["חיפה", "ראשל״צ", "רמה״ח", "נס ציונה", "לנדמרק", "פתח תקווה", "הרצליה", "סביון"]
 DISHES: List[str] = [
     "פאד תאי", "מלאזית", "פיליפינית", "אפגנית",
@@ -33,94 +31,86 @@ DISHES: List[str] = [
 ]
 DB_PATH = "food_quality.db"
 
-MIN_CHEF_TOP_M  = 5   # למטריקות רשת כלליות
-MIN_CHEF_WEEK_M = 2   # מינימום בדיקות לשבוע לטבח מוביל/חלש
-MIN_DISH_WEEK_M = 2   # מינימום בדיקות לשבוע למנה טובה/פחות טובה
+MIN_CHEF_TOP_M  = 5   # לרשת
+MIN_CHEF_WEEK_M = 2   # מינ' בדיקות/שבוע לטבח
+MIN_DISH_WEEK_M = 2   # מינ' בדיקות/שבוע למנה
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 # =========================
-# ---------- STYLES -------
+# ---------- STYLE --------
 # =========================
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;700;900&display=swap');
 
 :root{
-  --bg:#ffffff;
+  --bg:#f3fbf6;              /* ירקרק עדין */
   --surface:#ffffff;
-  --text:#111111;
+  --text:#0f172a;
   --muted:#6b7280;
-  --border:#e7ebf0;
-  --accent:#ff8a3d;          /* כתום */
-  --page-border-w: 14px;      /* עובי המסגרת סביב כל הדף */
-  --page-radius: 28px;        /* רדיוס למסגרת העמוד */
-  --page-margin: 14px;        /* מרווח מהדפדפן */
+  --border:#e6e8ef;
+  --mint-50:#ecfdf5;
+  --mint-100:#d1fae5;
+  --mint-700:#0d6b62;
 }
 
-html, body, .main, .block-container{
-  direction:rtl; background:var(--bg);
-  font-family:"Rubik",-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-}
+/* כיוון ופונט */
+html, body, .main, .block-container{direction:rtl; background:var(--bg);}
+.main .block-container{font-family:"Rubik",-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
 
-/* מסגרת כתומה מסביב לכל הדף */
+/* מסגרת שחורה דקה סביב כל העמוד */
 body{
-  border: var(--page-border-w) solid var(--accent);
-  border-radius: var(--page-radius);
-  margin: var(--page-margin);
+  border:2px solid #111;
+  border-radius:16px;
+  margin:10px;
 }
 
-/* מסך פתיחה ממורכז אנכית ואופקית */
-.splash-center{
-  min-height: calc(100vh - (2 * var(--page-margin)) - (2 * var(--page-border-w)));
-  display: grid;
-  place-items: center;
-  padding: 16px;
+/* כותרת עליונה ממורכזת בלבד */
+.header-min{
+  background:linear-gradient(135deg, var(--mint-50) 0%, #ffffff 70%);
+  border:1px solid var(--mint-100); border-radius:18px; padding:18px;
+  box-shadow:0 6px 22px rgba(13,107,98,.08); margin-bottom:14px;
+  text-align:center;
 }
-.splash-card{ width:100%; max-width:460px; text-align:center; }
+.header-min .title{font-size:26px; font-weight:900; color:var(--mint-700); margin:0;}
 
-/* כותרת */
-.header-mobile{
-  border-bottom:1px solid #f1f1f1; padding:10px 8px 14px; margin-bottom:10px; text-align:center;
-}
-.header-mobile .title{ color:var(--text); font-weight:900; font-size:22px; margin:0; }
+/* כרטיס סטנדרטי */
+.card{background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:16px; box-shadow:0 4px 18px rgba(10,20,40,.04); margin-bottom:12px;}
 
-/* סטטוס וקארדים */
-.status-min{display:flex; justify-content:center; gap:8px; background:#fff; border:1px solid var(--border); border-radius:12px; padding:8px 10px; margin-bottom:12px;}
-.chip{padding:4px 12px; border-radius:999px; border:1px solid var(--border); font-weight:800; font-size:12px; color:#111;}
-.card{ background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:14px; margin-bottom:12px; }
+/* Status bar */
+.status-min{display:flex; align-items:center; gap:10px; justify-content:center; background:#fff;
+  border:1px solid var(--border); border-radius:14px; padding:10px 12px; margin-bottom:12px;}
+.chip{padding:4px 10px; border:1px solid var(--mint-100); border-radius:999px;
+  font-weight:800; font-size:12px; color:var(--mint-700); background:var(--mint-50)}
 
-/* שדות */
+/* קלטים */
 .stTextInput input, .stTextArea textarea{
   background:#fff !important; color:var(--text) !important;
-  border-radius:14px !important; border:1px solid var(--border) !important; padding:10px 12px !important;
+  border-radius:12px !important; border:1px solid var(--border) !important; padding:10px 12px !important;
 }
 .stTextArea textarea{min-height:96px !important;}
 .stSelectbox div[data-baseweb="select"]{
   background:#fff !important; color:var(--text) !important;
-  border-radius:14px !important; border:1px solid var(--border) !important;
+  border-radius:12px !important; border:1px solid var(--border) !important;
 }
-.stTextInput label, .stTextArea label, .stSelectbox label, .stRadio label{ color:var(--text) !important; font-weight:800 !important; }
+.stTextInput label, .stTextArea label, .stSelectbox label, .stRadio label{color:var(--text) !important; font-weight:800 !important;}
 .stTextInput input:focus, .stTextArea textarea:focus, .stSelectbox [data-baseweb="select"]:focus-within{
-  outline:none !important; box-shadow:0 0 0 2px rgba(255,138,61,.15) !important; border-color:var(--accent) !important;
-}
+  outline:none !important; box-shadow:0 0 0 2px rgba(13,107,98,.15) !important; border-color:var(--mint-700) !important;}
 
-/* כפתור ראשי שחור */
+/* כפתור ראשי */
 .stButton>button{
-  width:100% !important; background:#111 !important; color:#fff !important; border:0 !important;
-  border-radius:16px !important; padding:12px 16px !important; font-weight:900 !important; font-size:16px !important;
-  box-shadow:0 8px 18px rgba(0,0,0,.18) !important;
-}
+  background:#111 !important; color:#fff !important; border:0 !important;
+  border-radius:12px !important; padding:12px 16px !important; font-weight:900 !important; font-size:16px !important;
+  box-shadow:0 8px 18px rgba(0,0,0,.18) !important; width:100% !important;}
 .stButton>button:hover{filter:brightness(1.03);}
 
-/* טבלת סיכום קומפקטית */
+/* טבלת סיכום */
 table.small {width:100%; border-collapse:collapse;}
 table.small th, table.small td {border-bottom:1px solid #f1f1f1; padding:8px; font-size:14px; text-align:center;}
 table.small th {font-weight:900;}
 .small-muted{color:#888; font-size:12px;}
-
-/* למרכז את ה-Radio של מצב העבודה */
-div[data-testid="stHorizontalBlock"] > div:has([data-testid="stRadio"]){ display:flex; justify-content:center; }
 
 /* הסתרת “Press Enter to apply” */
 div[data-testid="stWidgetInstructions"]{display:none !important;}
@@ -229,25 +219,11 @@ def refresh_df():
 def score_hint(x: int) -> str:
     return "חלש" if x <= 3 else ("סביר" if x <= 6 else ("טוב" if x <= 8 else "מצוין"))
 
-# כללי לרשת
-def top_chef_network_with_branch(df: pd.DataFrame, min_n: int = MIN_CHEF_TOP_M) -> Tuple[Optional[str], Optional[str], Optional[float], int]:
-    if df.empty:
-        return None, None, None, 0
-    g = df.groupby("chef_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
-    g = g.sort_values(["n","avg"], ascending=[False, False])
-    qual = g[g["n"] >= min_n]
-    pick = qual.iloc[0] if not qual.empty else g.iloc[0]
-    chef = str(pick["chef_name"])
-    avg = float(pick["avg"])
-    n = int(pick["n"])
-    mode_branch = df[df["chef_name"] == chef]["branch"].value_counts().idxmax()
-    return chef, mode_branch, avg, n
-
 # =========================
 # --- WEEKLY METRICS ------
 # =========================
 def _week_bounds(ref: datetime) -> Tuple[datetime, datetime]:
-    """שבוע מ-יום שני עד ראשון (UTC). אפשר להחליף לראשון לפי צורך."""
+    """שבוע מ-יום שני עד ראשון (UTC)."""
     start = ref - timedelta(days=ref.weekday())  # Monday
     start = datetime(start.year, start.month, start.day, tzinfo=ref.tzinfo)
     end = start + timedelta(days=7)
@@ -263,28 +239,19 @@ def _chef_minmax(frame: pd.DataFrame, min_count: int) -> Tuple[Optional[float], 
     return float(g["avg"].max()), float(g["avg"].min())
 
 def _dish_best_worst(frame: pd.DataFrame, min_count: int) -> Tuple[Tuple[Optional[str], Optional[float]], Tuple[Optional[str], Optional[float]]]:
-    """מחזיר ((best_name,best_avg),(worst_name,worst_avg)) לשבוע נתון."""
     if frame.empty:
         return (None, None), (None, None)
     g = frame.groupby("dish_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
     g = g[g["n"] >= min_count]
     if g.empty:
         return (None, None), (None, None)
-    best_row = g.loc[g["avg"].idxmax()]
+    best_row  = g.loc[g["avg"].idxmax()]
     worst_row = g.loc[g["avg"].idxmin()]
     return (str(best_row["dish_name"]), float(best_row["avg"])), (str(worst_row["dish_name"]), float(worst_row["avg"]))
 
 def weekly_branch_params(df: pd.DataFrame, branch: str,
                          min_chef: int = MIN_CHEF_WEEK_M,
                          min_dish: int = MIN_DISH_WEEK_M) -> Dict[str, Any]:
-    """
-    מחזיר:
-      avg: (ממוצע כללי — השבוע, שבוע שעבר)
-      best: (ממוצע טבח מוביל — השבוע, שבוע שעבר)          [ערך בלבד]
-      worst:(ממוצע טבח חלש  — השבוע, שבוע שעבר)          [ערך בלבד]
-      best_dish:  ((שם, ממוצע) השבוע, (שם, ממוצע) שבוע שעבר)
-      worst_dish: ((שם, ממוצע) השבוע, (שם, ממוצע) שבוע שעבר)
-    """
     if df.empty:
         return {
             "avg": (None, None), "best": (None, None), "worst": (None, None),
@@ -314,8 +281,8 @@ def weekly_branch_params(df: pd.DataFrame, branch: str,
     best_w,  worst_w  = _chef_minmax(sw,  min_chef)
     best_lw, worst_lw = _chef_minmax(slw, min_chef)
 
-    (best_dish_name_w,  best_dish_avg_w),  (worst_dish_name_w,  worst_dish_avg_w)  = _dish_best_worst(sw,  min_dish)
-    (best_dish_name_lw, best_dish_avg_lw), (worst_dish_name_lw, worst_dish_avg_lw) = _dish_best_worst(slw, min_dish)
+    (best_dish_name_w,  best_dish_avg_w),  (best_dish_name_lw,  best_dish_avg_lw)   = _dish_best_worst(sw,  min_dish)
+    (worst_dish_name_w, worst_dish_avg_w), (worst_dish_name_lw, worst_dish_avg_lw) = _dish_best_worst(slw, min_dish)
 
     return {
         "avg": (avg_w, avg_lw),
@@ -341,15 +308,15 @@ def wow_delta(curr: Optional[float], prev: Optional[float]) -> str:
 # ------ LOGIN / AUTH -----
 # =========================
 def require_auth() -> dict:
-    """מסך כניסה ממורכז — בחירת מצב (סניף/מטה) ובחירת סניף בגלילה."""
+    """מסך כניסה בראש העמוד: בחירת מצב (סניף/מטה) ובחירת סניף בגלילה."""
     if "auth" not in st.session_state:
         st.session_state.auth = {"role": None, "branch": None}
     auth = st.session_state.auth
 
     if not auth["role"]:
-        st.markdown('<div class="splash-center"><div class="splash-card">', unsafe_allow_html=True)
-        st.markdown('<div class="header-mobile"><p class="title">איכויות מזון</p></div>', unsafe_allow_html=True)
+        st.markdown('<div class="header-min"><p class="title">איכויות מזון</p></div>', unsafe_allow_html=True)
 
+        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.write("בחרו מצב עבודה:")
         role = st.radio("", options=["סניף", "מטה"], horizontal=True, index=0, label_visibility="collapsed")
 
@@ -362,10 +329,8 @@ def require_auth() -> dict:
             if st.button("המשך כ'מטה'"):
                 st.session_state.auth = {"role": "meta", "branch": None}
                 st.rerun()
-
-        st.markdown('</div></div>', unsafe_allow_html=True)  # splash-card + splash-center
+        st.markdown('</div>', unsafe_allow_html=True)
         st.stop()
-
     return auth
 
 auth = require_auth()
@@ -375,7 +340,7 @@ auth = require_auth()
 # =========================
 
 # Header + Status
-st.markdown('<div class="header-mobile"><p class="title">איכויות מזון</p></div>', unsafe_allow_html=True)
+st.markdown('<div class="header-min"><p class="title">איכויות מזון</p></div>', unsafe_allow_html=True)
 chip = auth["branch"] if auth["role"] == "branch" else "מטה"
 st.markdown(f'<div class="status-min"><span class="chip">{chip}</span></div>', unsafe_allow_html=True)
 
@@ -435,7 +400,6 @@ if not df.empty:
         avg_w,  avg_lw  = m["avg"]
         best_w, best_lw = m["best"]
         worst_w, worst_lw = m["worst"]
-
         (best_dish_name_w,  best_dish_avg_w),  (best_dish_name_lw,  best_dish_avg_lw)   = m["best_dish"]
         (worst_dish_name_w, worst_dish_avg_w), (worst_dish_name_lw, worst_dish_avg_lw) = m["worst_dish"]
 
@@ -544,7 +508,6 @@ if auth["role"] == "meta" and not df.empty:
 # =========================
 # ----- GPT SECTIONS ------
 # =========================
-# כרטיס 1 — ניתוח עם GPT (כפתור בלבד)
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### ניתוח עם GPT")
 
@@ -594,7 +557,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 # כרטיס 2 — שאל את אוהד
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.markdown("### שאל את אוהד")
-user_q = st.text_input("שאלה על הנתונים", value="")  # בלי placeholder
+user_q = st.text_input("שאלה על הנתונים", value="")
 if st.button("שלח"):
     if not df.empty and user_q.strip():
         table_csv = df_to_csv_for_llm(df)
