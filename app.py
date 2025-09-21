@@ -1,4 +1,4 @@
-# app.py — ג'ירף מטבחים · איכויות מזון (Mobile UI + Logo embedded)
+# app.py — ג'ירף מטבחים · איכויות מזון (Mobile UI + Embedded Logo)
 # הרצה מקומית: streamlit run app.py
 
 from __future__ import annotations
@@ -38,8 +38,9 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapi
 COLOR_NET = "#93C5FD"     # כחול בהיר
 COLOR_BRANCH = "#9AE6B4"  # ירוק בהיר
 
-# ===== לוגו מוטמע (Base64) ונשמר לקובץ אם צריך =====
+# ===== לוגו מוטמע (Base64) ונשמר לקובץ =====
 LOGO_PATH = "assets/giraffe-logo.png"
+# הלוגו כאן הוא placeholder בטוח; תוכל להחליף בבסיס־64 אחר אם תרצה.
 LOGO_PNG_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAANgAAADYCAMAAAC+/t3fAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8"
     "AAAAiklEQVR4Ae3BMQEAAADCoPVPbQdvoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -47,20 +48,7 @@ LOGO_PNG_B64 = (
     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHsE5K0AAXM8"
     "yQAAAABJRU5ErkJggg=="
 )
-# הערה: זה “פקק” בטוח. אני מחליף מיד לתמונה שהעלית (Base64 מלאה):
-LOGO_PNG_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAANgAAADYCAMAAAC+/t3fAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8"
-    "AAACh0lEQVR4Ae3aS3KbMBCF4bfEo1s8ZQyZr8G5JcJ0f3E2bS2rZB0i4w0f3R8b3r2x7oJm0Q0Jr7sQk"
-    "q8qgA0m4H3Qm8x0JkqgQb0r2Jv1yq9y9H2q2b8i5W7m5dV8i0y3m7m7m9d3mJ7q0rC1k3G8cBqgZ2n4P9"
-    "kqC6mKqz0ZCq3A7b0Xv0hQfYw1wZs3qfJvQHf7w2o0k8g4u7v3yGJw1bGqR2n2h9rX2rV7k0g3o7b+q2l"
-    "r9bQkJmWc2qk8m6mG8p8b4m6k5c3u9uC0m5o7s8v6u7q7s8v6u7q7s8v6u7q7s8v6u7q7s8v6u7q7s8v6"
-    "u7q7s8v6u7q7s8v6u7q7s8v6u7q7s8v6u7q7s8v6u7q7s8v6mV62bL6aVb9b5p0f9vJ1C0mV/2w9aNQ5S"
-    "gNq3mHqP9c1lQ8rQfF0p7kO3p2o5y3i9m2YxWc1a9YH5yOJ6pQqfYVqvZ0u7aH1u3Qm4c7yQm4c7yQm4c"
-    "7yQm4c7yQm4c7yQm4c7yQm4c7yQm4c7yQm4c7yQm4c7yQm4c7yQm4c7yQm4c7yQm4c7yQm4c7yQm4c7yQ"
-    "l4S8wJ2q9kX1bq3cU1c3R2a8b1Lr2o0c1c3R2a8b1Lr2o0c1c3R2a8b1Lr2o0c1c3R2a8b1Lr2o0c1c3R"
-    "2a8b1Lr2o0c1c3R2a8b1Lr2o0c1c3R2a8b1Lr2o0c1c3R2a8b1Lr2o0c1c3R2a8b1Lr2o0f2v8A2dJQWl"
-    "7cYoAAAAASUVORK5CYII="
-)
+
 def _ensure_logo():
     try:
         if not os.path.exists("assets"):
@@ -70,6 +58,7 @@ def _ensure_logo():
                 f.write(base64.b64decode(LOGO_PNG_B64))
     except Exception:
         pass
+
 _ensure_logo()
 
 # =========================
@@ -85,26 +74,76 @@ st.markdown("""
   --primary:#11b5a3; --primary-600:#0ea594; --primary-50:#eafff7;
   --shadow:0 10px 28px rgba(3,46,40,.06);
 }
+
 html, body, .main, .block-container, .sidebar .sidebar-content{direction:rtl;}
 .main .block-container{font-family:"Rubik",-apple-system,Segoe UI,Roboto,Arial,sans-serif;}
+
+/* מסגרת מובייל */
 .mobile-frame{max-width:430px;margin:0 auto;padding:10px 14px 80px;}
-.header-mobile{background:linear-gradient(180deg,var(--primary-50)0%,#fff 90%);border:1px solid #d9f6ee;border-radius:18px;padding:18px 16px 14px;margin:12px auto 16px;text-align:center;box-shadow:var(--shadow);}
-.header-mobile img{width:76px;height:76px;object-fit:cover;border-radius:16px;display:inline-block;margin-bottom:8px;background:#000;}
-.header-mobile .title{font-weight:900;font-size:22px;color:var(--primary-600);margin:0;}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:0 6px 18px rgba(16,185,156,.06);margin-bottom:12px;}
-.status-min{display:flex;justify-content:center;align-items:center;gap:8px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:8px 10px;}
-.chip{padding:4px 10px;border:1px solid #e6faf5;border-radius:999px;background:#f2fffb;color:var(--primary-600);font-weight:800;font-size:12px;}
-.stTextInput input,.stTextArea textarea{background:#f7fafc!important;color:var(--text)!important;border-radius:14px!important;border:1px solid var(--border)!important;padding:10px 12px!important;}
-.stTextArea textarea{min-height:96px!important;}
+
+/* כותרת ממורכזת עם לוגו */
+.header-mobile{
+  background:linear-gradient(180deg,var(--primary-50) 0%, #ffffff 90%);
+  border:1px solid #d9f6ee; border-radius:18px; padding:18px 16px 14px;
+  margin:12px auto 16px; text-align:center; box-shadow:var(--shadow);
+}
+.header-mobile img{
+  width:76px; height:76px; object-fit:cover; border-radius:16px;
+  display:inline-block; margin-bottom:8px; background:#000;
+}
+.header-mobile .title{font-weight:900; font-size:22px; color:var(--primary-600); margin:0;}
+
+/* כרטיסים */
+.card{
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:14px; box-shadow:0 6px 18px rgba(16,185,156,.06); margin-bottom:12px;
+}
+
+/* פס סטטוס */
+.status-min{
+  display:flex; justify-content:center; align-items:center; gap:8px;
+  background:#fff; border:1px solid var(--border); border-radius:12px; padding:8px 10px;
+}
+.chip{
+  padding:4px 10px; border:1px solid #e6faf5; border-radius:999px;
+  background:#f2fffb; color:var(--primary-600); font-weight:800; font-size:12px;
+}
+
+/* קלטים */
+.stTextInput input,.stTextArea textarea{
+  background:#f7fafc !important; color:var(--text) !important;
+  border-radius:14px !important; border:1px solid var(--border) !important;
+  padding:10px 12px !important;
+}
+.stTextArea textarea{min-height:96px !important;}
 .stSelectbox>div,.stRadio>div{width:100%;}
 div[data-testid="stHorizontalBlock"]>div:has([data-testid="stRadio"]){display:flex;justify-content:center;}
-.stSelectbox div[data-baseweb="select"]{background:#f7fafc!important;color:var(--text)!important;border-radius:14px!important;border:1px solid var(--border)!important;}
-.stTextInput label,.stTextArea label,.stSelectbox label,.stRadio label{color:#293241!important;font-weight:800!important;margin-bottom:6px!important;}
-.stTextInput input:focus,.stTextArea textarea:focus,.stSelectbox [data-baseweb="select"]:focus-within{outline:none!important;box-shadow:0 0 0 2px rgba(17,181,163,.18)!important;border-color:var(--primary)!important;}
-.stButton>button{width:100%!important;background:var(--primary)!important;color:#fff!important;border:0!important;border-radius:16px!important;padding:12px 16px!important;font-weight:900!important;font-size:16px!important;box-shadow:0 8px 20px rgba(17,181,163,.28)!important;}
+.stSelectbox div[data-baseweb="select"]{
+  background:#f7fafc !important; color:var(--text) !important;
+  border-radius:14px !important; border:1px solid var(--border) !important;
+}
+.stTextInput label,.stTextArea label,.stSelectbox label,.stRadio label{
+  color:#293241 !important; font-weight:800 !important; margin-bottom:6px !important;
+}
+.stTextInput input:focus,.stTextArea textarea:focus,.stSelectbox [data-baseweb="select"]:focus-within{
+  outline:none !important; box-shadow:0 0 0 2px rgba(17,181,163,.18) !important;
+  border-color:var(--primary) !important;
+}
+
+/* כפתור ראשי */
+.stButton>button{
+  width:100% !important; background:var(--primary) !important; color:#fff !important;
+  border:0 !important; border-radius:16px !important; padding:12px 16px !important;
+  font-weight:900 !important; font-size:16px !important;
+  box-shadow:0 8px 20px rgba(17,181,163,.28) !important;
+}
 .stButton>button:hover{filter:brightness(1.03);}
-.stAltairChart{border:1px solid var(--border);border-radius:14px;padding:8px;background:#fff;}
-div[data-testid="stWidgetInstructions"]{display:none!important;}
+
+/* גרפים */
+.stAltairChart{border:1px solid var(--border); border-radius:14px; padding:8px; background:#fff;}
+
+/* הסתרת “Press Enter to apply” */
+div[data-testid="stWidgetInstructions"]{display:none !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -147,6 +186,7 @@ def init_db():
     cur.execute(SCHEMA)
     for q in INDEXES: cur.execute(q)
     c.commit(); c.close()
+
 init_db()
 
 # =========================
@@ -162,7 +202,7 @@ def load_df() -> pd.DataFrame:
     c.close()
     return df
 
-def _get_sheet_id() -> str | None:
+def _get_sheet_id() -> Optional[str]:
     sheet_id = st.secrets.get("GOOGLE_SHEET_ID") or os.getenv("GOOGLE_SHEET_ID")
     if sheet_id:
         return sheet_id
@@ -174,7 +214,7 @@ def _get_sheet_id() -> str | None:
             return None
     return None
 
-def _get_service_account_info() -> dict | None:
+def _get_service_account_info() -> Optional[dict]:
     raw = (st.secrets.get("GOOGLE_SERVICE_ACCOUNT_JSON")
            or os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
            or st.secrets.get("google_service_account")
@@ -216,31 +256,34 @@ def refresh_df():
     load_df.clear()
 
 def score_hint(x: int) -> str:
-    return "חלש" if x <= 3 else ("סביר" אם x <= 6 else ("טוב" אם x <= 8 else "מצוין"))
+    return "חלש" if x <= 3 else ("סביר" if x <= 6 else ("טוב" if x <= 8 else "מצוין"))
 
 # KPI חישובים
 def network_avg(df: pd.DataFrame) -> Optional[float]:
-    return float(df["score"].mean()) אם not df.empty else None
+    return float(df["score"].mean()) if not df.empty else None
 
 def branch_avg(df: pd.DataFrame, branch: str) -> Optional[float]:
     d = df[df["branch"] == branch]
-    return float(d["score"].mean()) אם not d.empty else None
+    return float(d["score"].mean()) if not d.empty else None
 
 def dish_avg_network(df: pd.DataFrame, dish: str) -> Optional[float]:
     d = df[df["dish_name"] == dish]
-    return float(d["score"].mean()) אם not d.empty else None
+    return float(d["score"].mean()) if not d.empty else None
 
 def dish_avg_branch(df: pd.DataFrame, branch: str, dish: str) -> Optional[float]:
     d = df[(df["branch"] == branch) & (df["dish_name"] == dish)]
-    return float(d["score"].mean()) אם not d.empty else None
+    return float(d["score"].mean()) if not d.empty else None
 
 def top_chef_network_with_branch(df: pd.DataFrame, min_n: int = MIN_CHEF_TOP_M) -> Tuple[Optional[str], Optional[str], Optional[float], int]:
-    if df.empty: return None, None, None, 0
+    if df.empty:
+        return None, None, None, 0
     g = df.groupby("chef_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
     g = g.sort_values(["n","avg"], ascending=[False, False])
     qual = g[g["n"] >= min_n]
     pick = qual.iloc[0] if not qual.empty else g.iloc[0]
-    chef = str(pick["chef_name"]); avg = float(pick["avg"]); n = int(pick["n"])
+    chef = str(pick["chef_name"])
+    avg = float(pick["avg"])
+    n = int(pick["n"])
     mode_branch = df[df["chef_name"] == chef]["branch"].value_counts().idxmax()
     return chef, mode_branch, avg, n
 
@@ -248,6 +291,7 @@ def top_chef_network_with_branch(df: pd.DataFrame, min_n: int = MIN_CHEF_TOP_M) 
 # ------ LOGIN & CONTEXT --
 # =========================
 def require_auth() -> dict:
+    """מסך כניסה: 'סניף' (בחירת סניף) או 'מטה' (ללא סיסמה)."""
     if "auth" not in st.session_state:
         st.session_state.auth = {"role": None, "branch": None}
     auth = st.session_state.auth
@@ -288,7 +332,7 @@ else:
 # =========================
 st.markdown('<div class="card">', unsafe_allow_html=True)
 with st.form("quality_form", clear_on_submit=False):
-    colA, colB, colC = st.columns([1,1,1])
+    colA, colB, colC = st.columns([1, 1, 1])
 
     if auth["role"] == "meta":
         with colA:
@@ -304,13 +348,13 @@ with st.form("quality_form", clear_on_submit=False):
     with colC:
         dish = st.selectbox("שם המנה *", options=DISHES, index=0)
 
-    colD, colE = st.columns([1,1])
+    colD, colE = st.columns([1, 1])
     with colD:
         score = st.selectbox(
             "ציון איכות *",
             options=list(range(1, 11)),
             index=7,
-            format_func=lambda x: f"{x} - " + ("חלש" if x <= 3 else ("סביר" if x <= 6 else ("טוב" if x <= 8 else "מצוין")))
+            format_func=lambda x: f"{x} - {score_hint(x)}"
         )
     with colE:
         notes = st.text_area("הערות (לא חובה)")
@@ -353,13 +397,13 @@ def bar_compare(title: str, labels: list[str], values: list[float], colors: list
 if df.empty:
     st.info("אין נתונים להצגה עדיין.")
 else:
-    net_avg = float(df["score"].mean())
+    net_avg = network_avg(df)
     br = auth.get("branch") or BRANCHES[0]
-    br_avg = float(df[df["branch"] == br]["score"].mean()) if not df[df["branch"] == br].empty else None
+    br_avg = branch_avg(df, br)
 
     pick_dish = df["dish_name"].iloc[0] if not df.empty else None
-    net_dish_avg = float(df[df["dish_name"] == pick_dish]["score"].mean()) if pick_dish else None
-    br_dish_avg = float(df[(df["branch"] == br) & (df["dish_name"] == pick_dish)]["score"].mean()) if pick_dish else None
+    net_dish_avg = dish_avg_network(df, pick_dish) if pick_dish else None
+    br_dish_avg = dish_avg_branch(df, br, pick_dish) if pick_dish else None
 
     if net_avg is not None and br_avg is not None:
         bar_compare(f"ממוצע ציון — רשת מול {br}", ["רשת", br], [net_avg, br_avg], [COLOR_NET, COLOR_BRANCH])
@@ -367,25 +411,26 @@ else:
     st.markdown("<hr style='border:none;border-top:1px solid #e6e8ef;margin:14px 0'/>", unsafe_allow_html=True)
 
     if net_dish_avg is not None and br_dish_avg is not None:
-        bar_compare(f"ממוצע ציון למנה — רשת מול {br}",
-                    ["רשת · מנה", f"{br} · מנה"], [net_dish_avg, br_dish_avg],
-                    [COLOR_NET, COLOR_BRANCH])
+        bar_compare(
+            f"ממוצע ציון למנה — רשת מול {br}",
+            ["רשת · מנה", f"{br} · מנה"],
+            [net_dish_avg, br_dish_avg],
+            [COLOR_NET, COLOR_BRANCH],
+        )
 
     st.markdown("<hr style='border:none;border-top:1px solid #e6e8ef;margin:14px 0'/>", unsafe_allow_html=True)
 
-    # הטבח המצטיין
-    g = df.groupby("chef_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
-    g = g.sort_values(["n","avg"], ascending=[False, False])
-    pick = g.iloc[0] if not g.empty else None
-    chef_name = str(pick["chef_name"]) if pick is not None else None
-    chef_avg = float(pick["avg"]) if pick is not None else None
+    chef_name, chef_branch, chef_avg, chef_n = top_chef_network_with_branch(df, MIN_CHEF_TOP_M)
     title = "הטבח המצטיין ברשת"
     if chef_name:
-        title += f" — {chef_name}"
+        title += f" — {chef_name} · {chef_branch or ''}".strip()
     st.markdown(f'<div style="font-weight:900;margin:0 0 8px;">{title}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="card" style="text-align:center;"><div style="font-size:42px;font-weight:900;">{}</div></div>'.format(
-        "—" if chef_avg is None else f"{chef_avg:.2f}"
-    ), unsafe_allow_html=True)
+    st.markdown(
+        '<div class="card" style="text-align:center;"><div style="font-size:42px;font-weight:900;">{}</div></div>'.format(
+            "—" if chef_avg is None else f"{chef_avg:.2f}"
+        ),
+        unsafe_allow_html=True,
+    )
 
 st.markdown('</div>', unsafe_allow_html=True)  # סוף כרטיס ה-KPI
 
@@ -417,20 +462,21 @@ else:
             api_key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
             org_id = st.secrets.get("OPENAI_ORG") or os.getenv("OPENAI_ORG")
             project_id = st.secrets.get("OPENAI_PROJECT") or os.getenv("OPENAI_PROJECT")
+            model = st.secrets.get("OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4.1-mini"
             if not api_key:
                 return "חסר מפתח OPENAI_API_KEY (ב-Secrets/Environment)."
 
             client_kwargs = {"api_key": api_key}
-            if org_id: client_kwargs["organization"] = org_id
-            if project_id: client_kwargs["project"] = project_id
+            if org_id:
+                client_kwargs["organization"] = org_id
+            if project_id:
+                client_kwargs["project"] = project_id
 
             client = OpenAI(**client_kwargs)
             resp = client.chat.completions.create(
-                model=os.getenv("OPENAI_MODEL","gpt-4.1-mini"),
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+                model=model,
+                messages=[{"role": "system", "content": system_prompt},
+                          {"role": "user", "content": user_prompt}],
                 temperature=0.2,
             )
             return (resp.choices[0].message.content or "").strip()
@@ -472,7 +518,7 @@ if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
 
 # התנתקות משתמש
-c1, c2 = st.columns([4,1])
+c1, c2 = st.columns([4, 1])
 with c1:
     st.caption("לחזרה למסך כניסה: התנתק משתמש.")
 with c2:
@@ -483,7 +529,7 @@ with c2:
 # כניסת מנהל
 if not st.session_state.admin_logged_in:
     st.write("כניסה למנהל")
-    x1, x2, x3 = st.columns([2,1,2])
+    x1, x2, x3 = st.columns([2, 1, 2])
     with x2:
         pwd = st.text_input("סיסמת מנהל:", type="password", key="admin_password")
         if st.button("התחבר", use_container_width=True):
@@ -493,7 +539,7 @@ if not st.session_state.admin_logged_in:
             else:
                 st.error("סיסמה שגויה")
 else:
-    y1, y2 = st.columns([4,1])
+    y1, y2 = st.columns([4, 1])
     with y1:
         st.success("מחובר כמנהל")
     with y2:
