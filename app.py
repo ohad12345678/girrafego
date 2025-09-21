@@ -1,4 +1,4 @@
-# app.py — ג'ירף – איכויות מזון (תיקון הקלדה ידנית + צבעי גרף בהירים ותוויות מאוזנות)
+# app.py — ג'ירף – איכויות מזון (תיקון select בתוך form: ללא on_change; מצב הקלדה ידנית יציב)
 from __future__ import annotations
 import os, json, sqlite3
 from datetime import datetime, timedelta
@@ -221,8 +221,8 @@ def refresh_df():
     load_df.clear()
 
 def score_hint(x: int) -> str:
+    # תיקון "if" (לא "אם")
     return "חלש" if x <= 3 else ("סביר" if x <= 6 else ("טוב" if x <= 8 else "מצוין"))
-
 
 # === רשת 7 ימים ===
 def last7(df: pd.DataFrame) -> pd.DataFrame:
@@ -332,17 +332,6 @@ if "chef_mode" not in st.session_state:
 if "chef_manual" not in st.session_state:
     st.session_state.chef_manual = ""
 
-def _chef_select_changed():
-    """עוברים למצב הקלדה כשהאופציה נבחרת, סוגרים את הדרופדאון ע"י reset + rerun (חשוב לנייד)."""
-    sel = st.session_state.get("chef_select")
-    if sel == CHEF_MANUAL_OPTION:
-        st.session_state.chef_mode = "manual"
-        st.session_state.chef_select = "— בחר —"  # סוגר את הדרופדאון
-        st.rerun()
-
-def _chef_back_to_list():
-    st.session_state.chef_mode = "list"
-
 # =========================
 # -------- MAIN UI --------
 # =========================
@@ -367,7 +356,7 @@ with st.form("quality_form", clear_on_submit=False):
             st.text_input("שם סניף", value=selected_branch, disabled=True)
 
     with colB:
-        # רשימת טבחים לסניף + האופציה להקלדה ידנית (תמיד זמינה)
+        # רשימת טבחים לסניף + אופציית הקלדה ידנית (ללא on_change)
         chef_options = ["— בחר —"]
         if selected_branch and selected_branch != "— בחר —":
             chef_options += CHEFS_BY_BRANCH.get(selected_branch, [])
@@ -378,17 +367,25 @@ with st.form("quality_form", clear_on_submit=False):
             options=chef_options,
             index=0,
             key="chef_select",
-            on_change=_chef_select_changed,
             help="בחר/י מהרשימה או בחר/י 'הקלדה ידנית…' כדי להקליד שם חדש"
         )
 
+        # אם נבחרה 'הקלדה ידנית…' — מעבר מצב + סגירת הדרופדאון באמצעות rerun
+        if st.session_state.get("chef_select") == CHEF_MANUAL_OPTION and st.session_state.chef_mode != "manual":
+            st.session_state.chef_mode = "manual"
+            st.session_state.chef_select = "— בחר —"
+            st.rerun()
+
+        # מצב הקלדה ידנית
         if st.session_state.chef_mode == "manual":
             st.text_input(
                 "שם הטבח — הקלדה ידנית *",
                 key="chef_manual",
                 placeholder="הקלד/י כאן את שם הטבח",
             )
-            st.button("חזרה לרשימה", on_click=_chef_back_to_list)
+            if st.form_submit_button("חזרה לרשימה", use_container_width=False):
+                st.session_state.chef_mode = "list"
+                st.rerun()
 
     with colC:
         dish_options = ["— בחר —"] + DISHES
@@ -516,27 +513,16 @@ if auth["role"] == "meta" and not df.empty:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### KPI רשת – 7 ימים אחרונים")
 
-    # 1) גרף עמודות ממוצע ציון לפי סניף — תוויות מאוזנות וצבעים בהירים מאוד
+    # 1) גרף עמודות: ממוצע ציון לפי סניף — תוויות מאוזנות, צבעים בהירים
     g = network_branch_avgs_last7(df)
     if not g.empty:
         light_palette = [
-            "#cfe8ff",  # כחול בהיר מאד
-            "#d7fde7",  # ירוק-מנטה בהיר
-            "#fde2f3",  # ורוד בהיר מאד
-            "#fff3bf",  # צהוב-ונילה
-            "#e5e1ff",  # סגול בהיר מאד
-            "#c9faf3",  # טיל בהיר מאד
-            "#ffdede",  # אדמדם בהיר מאד
-            "#eaf7e5",  # ירקרק בהיר מאד
+            "#cfe8ff", "#d7fde7", "#fde2f3", "#fff3bf",
+            "#e5e1ff", "#c9faf3", "#ffdede", "#eaf7e5",
         ]
         x_axis = alt.Axis(
-            labelAngle=0,
-            labelPadding=6,
-            labelColor='#111',
-            title=None,
-            labelOverlap="greedy",
-            labelLimit=500,
-            labelFontSize=12,
+            labelAngle=0, labelPadding=6, labelColor='#111',
+            title=None, labelOverlap="greedy", labelLimit=500, labelFontSize=12
         )
         chart = (
             alt.Chart(g)
@@ -545,10 +531,7 @@ if auth["role"] == "meta" and not df.empty:
                 x=alt.X("branch:N", sort='-y', axis=x_axis),
                 y=alt.Y("avg:Q", scale=alt.Scale(domain=(0, 10)), title=None),
                 color=alt.Color("branch:N", legend=None, scale=alt.Scale(range=light_palette)),
-                tooltip=[
-                    alt.Tooltip("branch:N", title="סניף"),
-                    alt.Tooltip("avg:Q", title="ממוצע", format=".2f"),
-                ],
+                tooltip=[alt.Tooltip("branch:N", title="סניף"), alt.Tooltip("avg:Q", title="ממוצע", format=".2f")],
             )
             .properties(height=260)
             .configure_view(strokeWidth=0)
@@ -560,7 +543,7 @@ if auth["role"] == "meta" and not df.empty:
     # 2) טבח מוביל
     chef, chef_branch, chef_avg, chef_n = network_top_chef_last7(df, MIN_CHEF_WEEK_M)
 
-    # 3-4) מנה טובה/לשיפור
+    # 3-4) מנה הכי גבוהה/נמוכה (נמוכה לא תוצג אם זהה לגבוהה)
     best_dish, worst_dish = network_best_worst_dish_last7(df, MIN_DISH_WEEK_M)
 
     def line(name, value):
