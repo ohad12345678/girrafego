@@ -1,0 +1,6 @@
+streamlit
+pandas
+altair
+gspread
+google-auth
+openai>=1.0.0
