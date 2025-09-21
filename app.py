@@ -1,4 +1,4 @@
-# app.py — ג'ירף מטבחים · איכויות מזון
+# app.py — ג'ירף – איכויות מזון
 # הרצה: streamlit run app.py
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ except Exception:
 # =========================
 # ------- SETTINGS --------
 # =========================
-st.set_page_config(page_title="ג'ירף מטבחים – איכויות מזון", layout="wide")
+st.set_page_config(page_title="ג'ירף – איכויות מזון", layout="wide")
 
 BRANCHES: List[str] = ["חיפה", "ראשל״צ", "רמה״ח", "נס ציונה", "לנדמרק", "פתח תקווה", "הרצליה", "סביון"]
 DISHES: List[str] = [
@@ -29,11 +29,18 @@ DISHES: List[str] = [
     "אורז מטוגן", "מאקי סלמון", "מאקי טונה",
     "ספייסי סלמון", "נודלס ילדים"
 ]
-DB_PATH = "food_quality.db"
 
-MIN_CHEF_TOP_M  = 5   # לרשת
-MIN_CHEF_WEEK_M = 2   # מינ' בדיקות/שבוע לטבח
-MIN_DISH_WEEK_M = 2   # מינ' בדיקות/שבוע למנה
+# טבחים לפי סניף + אפשרות להזנה ידנית בטופס
+CHEFS_BY_BRANCH: Dict[str, List[str]] = {
+    "פתח תקווה": ["שן", "זאנג", "דאי", "לי", "ין", "יו"],
+    "הרצליה": ["יון", "שיגווה", "באו באו", "האו", "טו", "זאנג", "טאנג", "צונג"],
+    # אפשר להוסיף כאן סניפים נוספים…
+}
+
+DB_PATH = "food_quality.db"
+MIN_CHEF_TOP_M  = 5     # לרשת
+MIN_CHEF_WEEK_M = 2     # מינ' בדיקות/שבוע לטבח
+MIN_DISH_WEEK_M = 2     # מינ' בדיקות/שבוע למנה
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
@@ -55,18 +62,18 @@ st.markdown("""
   --mint-700:#0d6b62;
 }
 
-/* כיוון ופונט */
+/* RTL + פונט */
 html, body, .main, .block-container{direction:rtl; background:var(--bg);}
 .main .block-container{font-family:"Rubik",-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
 
-/* מסגרת שחורה דקה סביב כל העמוד */
+/* מסגרת שחורה — עבה פי 2 */
 body{
-  border:2px solid #111;
+  border:4px solid #111;   /* היה 2px */
   border-radius:16px;
   margin:10px;
 }
 
-/* כותרת עליונה ממורכזת בלבד */
+/* כותרת ממורכזת */
 .header-min{
   background:linear-gradient(135deg, var(--mint-50) 0%, #ffffff 70%);
   border:1px solid var(--mint-100); border-radius:18px; padding:18px;
@@ -75,17 +82,17 @@ body{
 }
 .header-min .title{font-size:26px; font-weight:900; color:var(--mint-700); margin:0;}
 
-/* כרטיס סטנדרטי */
+/* כרטיס */
 .card{background:var(--surface); border:1px solid var(--border); border-radius:16px;
   padding:16px; box-shadow:0 4px 18px rgba(10,20,40,.04); margin-bottom:12px;}
 
-/* Status bar */
+/* Status */
 .status-min{display:flex; align-items:center; gap:10px; justify-content:center; background:#fff;
   border:1px solid var(--border); border-radius:14px; padding:10px 12px; margin-bottom:12px;}
 .chip{padding:4px 10px; border:1px solid var(--mint-100); border-radius:999px;
   font-weight:800; font-size:12px; color:var(--mint-700); background:var(--mint-50)}
 
-/* קלטים */
+/* שדות */
 .stTextInput input, .stTextArea textarea{
   background:#fff !important; color:var(--text) !important;
   border-radius:12px !important; border:1px solid var(--border) !important; padding:10px 12px !important;
@@ -99,20 +106,20 @@ body{
 .stTextInput input:focus, .stTextArea textarea:focus, .stSelectbox [data-baseweb="select"]:focus-within{
   outline:none !important; box-shadow:0 0 0 2px rgba(13,107,98,.15) !important; border-color:var(--mint-700) !important;}
 
-/* כפתור ראשי */
+/* כפתור */
 .stButton>button{
   background:#111 !important; color:#fff !important; border:0 !important;
   border-radius:12px !important; padding:12px 16px !important; font-weight:900 !important; font-size:16px !important;
   box-shadow:0 8px 18px rgba(0,0,0,.18) !important; width:100% !important;}
 .stButton>button:hover{filter:brightness(1.03);}
 
-/* טבלת סיכום */
+/* טבלה קומפקטית */
 table.small {width:100%; border-collapse:collapse;}
 table.small th, table.small td {border-bottom:1px solid #f1f1f1; padding:8px; font-size:14px; text-align:center;}
 table.small th {font-weight:900;}
 .small-muted{color:#888; font-size:12px;}
 
-/* הסתרת “Press Enter to apply” */
+/* הסתרת “Press Enter to apply” בכל הווידג'טים */
 div[data-testid="stWidgetInstructions"]{display:none !important;}
 </style>
 """, unsafe_allow_html=True)
@@ -229,42 +236,52 @@ def _week_bounds(ref: datetime) -> Tuple[datetime, datetime]:
     end = start + timedelta(days=7)
     return start, end
 
-def _chef_minmax(frame: pd.DataFrame, min_count: int) -> Tuple[Optional[float], Optional[float]]:
-    if frame.empty:
-        return None, None
-    g = frame.groupby("chef_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
-    g = g[g["n"] >= min_count]
-    if g.empty:
-        return None, None
-    return float(g["avg"].max()), float(g["avg"].min())
-
-def _dish_best_worst(frame: pd.DataFrame, min_count: int) -> Tuple[Tuple[Optional[str], Optional[float]], Tuple[Optional[str], Optional[float]]]:
+def _chef_best_worst(frame: pd.DataFrame, min_count: int
+                     ) -> Tuple[Tuple[Optional[str], Optional[float]], Tuple[Optional[str], Optional[float]]]:
+    """((best_name, best_avg), (worst_name, worst_avg))"""
     if frame.empty:
         return (None, None), (None, None)
-    g = frame.groupby("dish_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
+    g = frame.groupby("chef_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
     g = g[g["n"] >= min_count]
     if g.empty:
         return (None, None), (None, None)
     best_row  = g.loc[g["avg"].idxmax()]
     worst_row = g.loc[g["avg"].idxmin()]
-    return (str(best_row["dish_name"]), float(best_row["avg"])), (str(worst_row["dish_name"]), float(worst_row["avg"]))
+    return (str(best_row["chef_name"]), float(best_row["avg"])), (str(worst_row["chef_name"]), float(worst_row["avg"]))
+
+def _dish_best_worst(frame: pd.DataFrame, min_count: int
+                     ) -> Tuple[Optional[str], Optional[str]]:
+    """שם המנה הטובה, ושם המנה לשיפור (ללא ממוצעים)."""
+    if frame.empty:
+        return None, None
+    g = frame.groupby("dish_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
+    g = g[g["n"] >= min_count]
+    if g.empty:
+        return None, None
+    best_row  = g.loc[g["avg"].idxmax()]
+    worst_row = g.loc[g["avg"].idxmin()]
+    return str(best_row["dish_name"]), str(worst_row["dish_name"])
 
 def weekly_branch_params(df: pd.DataFrame, branch: str,
                          min_chef: int = MIN_CHEF_WEEK_M,
                          min_dish: int = MIN_DISH_WEEK_M) -> Dict[str, Any]:
     if df.empty:
         return {
-            "avg": (None, None), "best": (None, None), "worst": (None, None),
-            "best_dish": ((None, None), (None, None)),
-            "worst_dish": ((None, None), (None, None)),
+            "avg": (None, None),
+            "best_chef": ((None, None), (None, None)),
+            "worst": (None, None),
+            "best_dish_name": (None, None),
+            "worst_dish_name": (None, None),
             "n_week": 0, "n_last": 0
         }
     d = df[df["branch"] == branch].copy()
     if d.empty:
         return {
-            "avg": (None, None), "best": (None, None), "worst": (None, None),
-            "best_dish": ((None, None), (None, None)),
-            "worst_dish": ((None, None), (None, None)),
+            "avg": (None, None),
+            "best_chef": ((None, None), (None, None)),
+            "worst": (None, None),
+            "best_dish_name": (None, None),
+            "worst_dish_name": (None, None),
             "n_week": 0, "n_last": 0
         }
 
@@ -278,18 +295,18 @@ def weekly_branch_params(df: pd.DataFrame, branch: str,
     avg_w  = float(sw["score"].mean())  if not sw.empty  else None
     avg_lw = float(slw["score"].mean()) if not slw.empty else None
 
-    best_w,  worst_w  = _chef_minmax(sw,  min_chef)
-    best_lw, worst_lw = _chef_minmax(slw, min_chef)
+    (best_name_w, best_avg_w), (worst_name_w, worst_avg_w) = _chef_best_worst(sw,  min_chef)
+    (best_name_lw, best_avg_lw), (worst_name_lw, worst_avg_lw) = _chef_best_worst(slw, min_chef)
 
-    (best_dish_name_w,  best_dish_avg_w),  (best_dish_name_lw,  best_dish_avg_lw)   = _dish_best_worst(sw,  min_dish)
-    (worst_dish_name_w, worst_dish_avg_w), (worst_dish_name_lw, worst_dish_avg_lw) = _dish_best_worst(slw, min_dish)
+    best_dish_name_w,  worst_dish_name_w  = _dish_best_worst(sw,  min_dish)
+    best_dish_name_lw, worst_dish_name_lw = _dish_best_worst(slw, min_dish)
 
     return {
         "avg": (avg_w, avg_lw),
-        "best": (best_w, best_lw),
-        "worst": (worst_w, worst_lw),
-        "best_dish": ((best_dish_name_w,  best_dish_avg_w),  (best_dish_name_lw,  best_dish_avg_lw)),
-        "worst_dish":((worst_dish_name_w, worst_dish_avg_w), (worst_dish_name_lw, worst_dish_avg_lw)),
+        "best_chef": ((best_name_w, best_avg_w), (best_name_lw, best_avg_lw)),
+        "worst": (worst_avg_w, worst_avg_lw),  # ערכים בלבד
+        "best_dish_name": (best_dish_name_w, best_dish_name_lw),
+        "worst_dish_name": (worst_dish_name_w, worst_dish_name_lw),
         "n_week": int(len(sw)), "n_last": int(len(slw)),
     }
 
@@ -308,23 +325,27 @@ def wow_delta(curr: Optional[float], prev: Optional[float]) -> str:
 # ------ LOGIN / AUTH -----
 # =========================
 def require_auth() -> dict:
-    """מסך כניסה בראש העמוד: בחירת מצב (סניף/מטה) ובחירת סניף בגלילה."""
+    """דף פתיחה בראש הדף: בחירת מצב (סניף/מטה) ובחירת סניף בגלילה (עם ברירת־מחדל ריקה)."""
     if "auth" not in st.session_state:
         st.session_state.auth = {"role": None, "branch": None}
     auth = st.session_state.auth
 
     if not auth["role"]:
-        st.markdown('<div class="header-min"><p class="title">איכויות מזון</p></div>', unsafe_allow_html=True)
+        st.markdown('<div class="header-min"><p class="title">ג׳ירף – איכויות מזון</p></div>', unsafe_allow_html=True)
 
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.write("בחרו מצב עבודה:")
         role = st.radio("", options=["סניף", "מטה"], horizontal=True, index=0, label_visibility="collapsed")
 
         if role == "סניף":
-            selected = st.selectbox("שם סניף *", options=BRANCHES, index=0)
+            branch_opt = ["— בחר —"] + BRANCHES
+            selected = st.selectbox("שם סניף *", options=branch_opt, index=0)
             if st.button("המשך"):
-                st.session_state.auth = {"role": "branch", "branch": selected}
-                st.rerun()
+                if selected == "— בחר —":
+                    st.error("נא לבחור סניף.")
+                else:
+                    st.session_state.auth = {"role": "branch", "branch": selected}
+                    st.rerun()
         else:
             if st.button("המשך כ'מטה'"):
                 st.session_state.auth = {"role": "meta", "branch": None}
@@ -339,31 +360,44 @@ auth = require_auth()
 # -------- MAIN UI --------
 # =========================
 
-# Header + Status
-st.markdown('<div class="header-min"><p class="title">איכויות מזון</p></div>', unsafe_allow_html=True)
+# כותרת + סטטוס
+st.markdown('<div class="header-min"><p class="title">ג׳ירף – איכויות מזון</p></div>', unsafe_allow_html=True)
 chip = auth["branch"] if auth["role"] == "branch" else "מטה"
 st.markdown(f'<div class="status-min"><span class="chip">{chip}</span></div>', unsafe_allow_html=True)
 
-# -------- FORM --------
 df = load_df()
 
+# -------- FORM --------
 st.markdown('<div class="card">', unsafe_allow_html=True)
 with st.form("quality_form", clear_on_submit=False):
     colA, colB, colC = st.columns([1, 1, 1])
 
+    # בחירת סניף — רק במטה; בסניף לא מבקשים שוב.
     if auth["role"] == "meta":
         with colA:
-            selected_branch = st.selectbox("שם סניף *", options=BRANCHES, index=0)
+            branch_opt = ["— בחר —"] + BRANCHES
+            selected_branch = st.selectbox("שם סניף *", options=branch_opt, index=0)
     else:
         selected_branch = auth["branch"]
         with colA:
             st.text_input("שם סניף", value=selected_branch, disabled=True)
 
+    # שם הטבח — רשימה לפי סניף + הזנה ידנית
     with colB:
-        chef = st.text_input("שם הטבח *", value="")  # ללא placeholder
+        chef_options = ["— בחר —"]
+        if selected_branch and selected_branch != "— בחר —":
+            chef_options += CHEFS_BY_BRANCH.get(selected_branch, [])
+        chef_options += ["הזנה ידנית…"]
+        chef_choice = st.selectbox("שם הטבח *", options=chef_options, index=0, key="chef_select")
 
+        chef_manual = ""
+        if chef_choice == "הזנה ידנית…":
+            chef_manual = st.text_input("שם טבח — הזנה ידנית", value="")
+
+    # שם המנה — ריק כברירת־מחדל
     with colC:
-        dish = st.selectbox("שם המנה *", options=DISHES, index=0)
+        dish_options = ["— בחר —"] + DISHES
+        dish = st.selectbox("שם המנה *", options=dish_options, index=0)
 
     colD, colE = st.columns([1, 1])
     with colD:
@@ -374,19 +408,33 @@ with st.form("quality_form", clear_on_submit=False):
             format_func=lambda x: f"{x} - {score_hint(x)}"
         )
     with colE:
-        notes = st.text_area("הערות (לא חובה)", value="")  # ללא placeholder
+        notes = st.text_area("הערות (לא חובה)", value="")
 
     submitted = st.form_submit_button("שמור בדיקה")
 st.markdown('</div>', unsafe_allow_html=True)
 
+# ולידציה ושמירה
 if submitted:
-    if not selected_branch or not chef.strip() or not dish:
-        st.error("חובה לבחור/להציג סניף, להזין שם טבח ולבחור מנה.")
+    # סניף נדרש רק במטה
+    if auth["role"] == "meta" and (not selected_branch or selected_branch == "— בחר —"):
+        st.error("נא לבחור סניף.")
     else:
-        insert_record(selected_branch, chef, dish, score, notes, submitted_by=auth["role"])
-        st.success(f"נשמר: {selected_branch} · {chef} · {dish} • ציון {score}")
-        refresh_df()
-        df = load_df()
+        # שם טבח מתוך רשימה או ידני
+        chef_final = None
+        if chef_choice and chef_choice not in ("— בחר —", "הזנה ידנית…"):
+            chef_final = chef_choice
+        elif chef_choice == "הזנה ידנית…" and chef_manual.strip():
+            chef_final = chef_manual.strip()
+
+        if not chef_final:
+            st.error("נא לבחור שם טבח או להזין ידנית.")
+        elif not dish or dish == "— בחר —":
+            st.error("נא לבחור שם מנה.")
+        else:
+            insert_record(selected_branch, chef_final, dish, score, notes, submitted_by=auth["role"])
+            st.success(f"נשמר: {selected_branch} · {chef_final} · {dish} • ציון {score}")
+            refresh_df()
+            df = load_df()
 
 # =========================
 # --- WEEKLY BY BRANCH ----
@@ -398,15 +446,19 @@ if not df.empty:
     def render_branch_week_table(branch: str):
         m = weekly_branch_params(df, branch, MIN_CHEF_WEEK_M, MIN_DISH_WEEK_M)
         avg_w,  avg_lw  = m["avg"]
-        best_w, best_lw = m["best"]
+        (best_name_w, best_avg_w), (best_name_lw, best_avg_lw) = m["best_chef"]
         worst_w, worst_lw = m["worst"]
-        (best_dish_name_w,  best_dish_avg_w),  (best_dish_name_lw,  best_dish_avg_lw)   = m["best_dish"]
-        (worst_dish_name_w, worst_dish_avg_w), (worst_dish_name_lw, worst_dish_avg_lw) = m["worst_dish"]
+        best_dish_w,  best_dish_lw  = m["best_dish_name"]
+        worst_dish_w, worst_dish_lw = m["worst_dish_name"]
 
-        def fmt_dish(name: Optional[str], avg: Optional[float]) -> str:
-            if name is None or avg is None:
+        def fmt_avg_name(avg: Optional[float], name: Optional[str]) -> str:
+            if avg is None and not name:
                 return "—"
-            return f"{name} ({avg:.2f})"
+            if avg is None:
+                return f"{name}"
+            if not name:
+                return f"{avg:.2f}"
+            return f"{avg:.2f} · {name}"
 
         html = f"""
         <table class="small">
@@ -427,9 +479,9 @@ if not df.empty:
             </tr>
             <tr>
               <td><b>ממוצע טבח מוביל</b> <span class="small-muted">(מינ׳ {MIN_CHEF_WEEK_M})</span></td>
-              <td>{'—' if best_w  is None else f'{best_w:.2f}'}</td>
-              <td>{'—' if best_lw is None else f'{best_lw:.2f}'}</td>
-              <td>{wow_delta(best_w, best_lw)}</td>
+              <td>{fmt_avg_name(best_avg_w, best_name_w)}</td>
+              <td>{fmt_avg_name(best_avg_lw, best_name_lw)}</td>
+              <td>{wow_delta(best_avg_w, best_avg_lw)}</td>
             </tr>
             <tr>
               <td><b>ממוצע טבח חלש</b> <span class="small-muted">(מינ׳ {MIN_CHEF_WEEK_M})</span></td>
@@ -438,16 +490,16 @@ if not df.empty:
               <td>{wow_delta(worst_w, worst_lw)}</td>
             </tr>
             <tr>
-              <td><b>מנה טובה (ממוצע)</b> <span class="small-muted">(מינ׳ {MIN_DISH_WEEK_M})</span></td>
-              <td>{fmt_dish(best_dish_name_w, best_dish_avg_w)}</td>
-              <td>{fmt_dish(best_dish_name_lw, best_dish_avg_lw)}</td>
-              <td>{wow_delta(best_dish_avg_w, best_dish_avg_lw)}</td>
+              <td><b>מנה טובה</b> <span class="small-muted">(לפי ממוצע גבוה)</span></td>
+              <td>{best_dish_w or '—'}</td>
+              <td>{best_dish_lw or '—'}</td>
+              <td>—</td>
             </tr>
             <tr>
-              <td><b>מנה פחות טובה (ממוצע)</b> <span class="small-muted">(מינ׳ {MIN_DISH_WEEK_M})</span></td>
-              <td>{fmt_dish(worst_dish_name_w, worst_dish_avg_w)}</td>
-              <td>{fmt_dish(worst_dish_name_lw, worst_dish_avg_lw)}</td>
-              <td>{wow_delta(worst_dish_avg_w, worst_dish_avg_lw)}</td>
+              <td><b>מנה לשיפור</b> <span class="small-muted">(לפי ממוצע נמוך)</span></td>
+              <td>{worst_dish_w or '—'}</td>
+              <td>{worst_dish_lw or '—'}</td>
+              <td>—</td>
             </tr>
           </tbody>
         </table>
@@ -471,11 +523,10 @@ if auth["role"] == "meta" and not df.empty:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### KPI רשת – הטוב והחלש (השבוע)")
 
-    # ערכים שבועיים לכל סניף
     week_values = {}
     for b in BRANCHES:
         m = weekly_branch_params(df, b, MIN_CHEF_WEEK_M, MIN_DISH_WEEK_M)
-        week_values[b] = {"avg": m["avg"][0], "best": m["best"][0], "worst": m["worst"][0]}
+        week_values[b] = {"avg": m["avg"][0], "best": m["best_chef"][0][1], "worst": m["worst"][0]}
 
     def pick_best_worst(key: str) -> Tuple[Optional[Tuple[str,float]], Optional[Tuple[str,float]]]:
         vals = [(b, v[key]) for b, v in week_values.items() if v[key] is not None]
