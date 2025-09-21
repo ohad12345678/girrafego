@@ -1,8 +1,9 @@
 # app.py — ג'ירף – איכויות מזון (Landing צהוב-בהיר, Grid 3×3, Daily Pick טרי, KPI במטה, Weekly 7d rolling)
 from __future__ import annotations
 import os, json, sqlite3
-from datetime import datetime
 from typing import List, Optional, Tuple, Dict, Any
+from datetime import datetime
+import urllib.parse as ul
 
 import pandas as pd
 import streamlit as st
@@ -79,20 +80,14 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
 /* כותרות */
 .header-min{
   background:var(--green-50);
-  border:1px solid #000;
-  border-radius:0;
-  padding:16px;
-  margin-bottom:14px;
-  text-align:center;
+  border:1px solid #000; border-radius:0;
+  padding:16px; margin-bottom:14px; text-align:center;
   box-shadow:0 6px 22px rgba(0,0,0,.04);
 }
 .header-landing{ /* בעמוד הפתיחה בלבד – צהוב בהיר */
   background:var(--amber);
-  border:1px solid #000;
-  border-radius:0;
-  padding:16px;
-  margin-bottom:14px;
-  text-align:center;
+  border:1px solid #000; border-radius:0;
+  padding:16px; margin-bottom:14px; text-align:center;
   box-shadow:0 6px 22px rgba(0,0,0,.04);
 }
 .header-min .title, .header-landing .title{font-size:26px; font-weight:900; color:#000; margin:0;}
@@ -107,11 +102,13 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
 .daily-pick-login .dish{font-weight:900; font-size:18px;}
 .daily-pick-login .avg{color:var(--green-500); font-weight:800;}
 
-/* Grid 3×3 */
+/* Grid 3×3 של קוביות */
 .branch-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
 @media (max-width:480px){ .branch-grid{ grid-template-columns:repeat(3,1fr);} }
 
-a.branch-card, .branch-card:link, .branch-card:visited, .branch-card:hover, .branch-card:active{
+.branch-grid a,
+.branch-grid a:link, .branch-grid a:visited,
+.branch-grid a:hover, .branch-grid a:active{
   color:#000 !important; text-decoration:none !important;
 }
 .branch-card{
@@ -143,7 +140,7 @@ a.branch-card, .branch-card:link, .branch-card:visited, .branch-card:hover, .bra
 .stSelectbox {overflow:visible !important;}
 div[data-baseweb="select"] + div[role="listbox"]{ bottom:auto !important; top: calc(100% + 8px) !important; max-height:50vh !important; }
 
-/* טבלאות */
+/* כרטיס/טבלאות */
 .card{background:var(--surface); border:1px solid var(--border); border-radius:16px;
   padding:16px; box-shadow:0 4px 18px rgba(10,20,40,.04); margin-bottom:12px;}
 table.small {width:100%; border-collapse:collapse;}
@@ -249,15 +246,19 @@ def refresh_df():
 def score_hint(x: int) -> str:
     return "חלש" if x <= 3 else ("סביר" if x <= 6 else ("טוב" if x <= 8 else "מצוין"))
 
-# === עזרי זמן ל-7 ימים מתגלגלים ===
+# === עזרי זמן ל-7 ימים מתגלגלים (תיקון TZ) ===
 def last7(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty: return df
-    start = pd.Timestamp.utcnow().tz_localize("UTC") - pd.Timedelta(days=7)
+    if df.empty:
+        return df
+    now = pd.Timestamp.now(tz="UTC")
+    start = now - pd.Timedelta(days=7)
     return df[df["created_at"] >= start].copy()
 
 def prev7(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty: return df
-    end = pd.Timestamp.utcnow().tz_localize("UTC") - pd.Timedelta(days=7)
+    if df.empty:
+        return df
+    now = pd.Timestamp.now(tz="UTC")
+    end = now - pd.Timedelta(days=7)
     start = end - pd.Timedelta(days=7)
     return df[(df["created_at"] >= start) & (df["created_at"] < end)].copy()
 
@@ -382,10 +383,31 @@ def fmt_num(v: Optional[float]) -> str:
 # =========================
 # ------ LOGIN / AUTH -----
 # =========================
+def _apply_query_login():
+    """כניסה דרך קישורי הקוביות (Query Params)."""
+    try:
+        qp = st.experimental_get_query_params()
+    except Exception:
+        qp = {}
+    role = qp.get("role", [None])[0]
+    if role == "meta":
+        st.session_state.auth = {"role": "meta", "branch": None}
+        st.experimental_set_query_params()  # נקה
+        st.rerun()
+    elif role == "branch":
+        b = qp.get("branch", [None])[0]
+        if b:
+            st.session_state.auth = {"role": "branch", "branch": b}
+            st.experimental_set_query_params()
+            st.rerun()
+
 def require_auth() -> dict:
     if "auth" not in st.session_state:
         st.session_state.auth = {"role": None, "branch": None}
     auth = st.session_state.auth
+
+    # תמיכה בכניסה דרך קישורי HTML
+    _apply_query_login()
 
     if not auth["role"]:
         # כותרת נחיתה + “מנה יומית”
@@ -404,18 +426,14 @@ def require_auth() -> dict:
 
         st.write("")  # ריווח
 
-        # גריד 3×3 של סניפים + קוביית “מטה”
+        # גריד 3×3 של סניפים + קוביית “מטה” (קישורי HTML עם פרמטרים)
         st.markdown("<div class='branch-grid'>", unsafe_allow_html=True)
         for b in BRANCHES + ["מטה"]:
-            key = f"btn_{b}"
-            clicked = st.button(b, key=key, use_container_width=True)
-            st.write(f"<div class='branch-card' style='display:none'>{b}</div>", unsafe_allow_html=True)  # כדי לשמור סטייל אחיד
-            if clicked:
-                if b == "מטה":
-                    st.session_state.auth = {"role": "meta", "branch": None}
-                else:
-                    st.session_state.auth = {"role": "branch", "branch": b}
-                st.rerun()
+            if b == "מטה":
+                href = "?role=meta"
+            else:
+                href = f"?role=branch&branch={ul.quote(b)}"
+            st.markdown(f"<a class='branch-card' href='{href}'>{b}</a>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
         st.stop()
@@ -447,7 +465,7 @@ with st.form("quality_form", clear_on_submit=False):
             st.text_input("שם סניף", value=selected_branch, disabled=True)
 
     with colB:
-        names = CHEFS_BY_BRANCH.get(selected_branch, [])
+        names = CHEFS_BY_BRANCH.get(selected_branch, []) if (selected_branch and selected_branch != "— בחר —") else []
         chef_choice = st.selectbox("שם הטבח * (בחירה מרשימה)", options=["— בחר —"] + names, index=0)
         chef_manual = st.text_input("שם הטבח — הקלדה ידנית (לא חובה)", value="")
 
@@ -586,7 +604,8 @@ if auth["role"] == "meta" and not df.empty:
                 x=alt.X("branch:N", sort='-y', axis=alt.Axis(labelAngle=0, title=None, labelLimit=300)),
                 y=alt.Y("avg:Q", scale=alt.Scale(domain=(0, 10)), title=None),
                 color=alt.Color("branch:N", legend=None, scale=alt.Scale(range=light_palette)),
-                tooltip=[alt.Tooltip("branch:N", title="סניף"), alt.Tooltip("avg:Q", title="ממוצע", format=".2f")],
+                tooltip=[alt.Tooltip("branch:N", title="סניף"),
+                         alt.Tooltip("avg:Q", title="ממוצע", format=".2f")],
             )
             .properties(height=260)
             .configure_view(strokeWidth=0)
