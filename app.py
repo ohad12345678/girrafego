@@ -221,7 +221,8 @@ def refresh_df():
     load_df.clear()
 
 def score_hint(x: int) -> str:
-    return "חלש" if x <= 3 else ("סביר" if x <= 6 else ("טוב" אם x <= 8 else "מצוין"))
+    return "חלש" if x <= 3 else ("סביר" if x <= 6 else ("טוב" if x <= 8 else "מצוין"))
+
 
 # === רשת 7 ימים ===
 def last7(df: pd.DataFrame) -> pd.DataFrame:
