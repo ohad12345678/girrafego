@@ -1,4 +1,4 @@
-# app.py — ג'ירף – איכויות מזון (Landing עם רקע ענברי, קוביות ירוקות בהירות חדשות, Daily Pick טרי בכל כניסה)
+# app.py — ג'ירף – איכויות מזון (Landing ענברי, קוביות 3×3, Daily Pick טרי, KPI; סיכום 60 יום; GPT מוגבל לסניף)
 from __future__ import annotations
 import os, json, sqlite3
 from datetime import datetime
@@ -49,7 +49,7 @@ CHEFS_BY_BRANCH: Dict[str, List[str]] = {
 
 DB_PATH = "food_quality.db"
 MIN_CHEF_TOP_M  = 5
-MIN_CHEF_WEEK_M = 2
+MIN_CHEF_WEEK_M = 2      # משמש כסף מינימום גם בחישוב 60 יום
 MIN_DISH_WEEK_M = 2
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -66,7 +66,7 @@ st.markdown("""
   --surface:#ffffff;
   --text:#0d0f12;
   --border:#e7ebf0;
-  --green-50:#ecfdf5;      /* ירוק עדין כללי */
+  --green-50:#ecfdf5;
   --tile-green:#d7fde7;    /* ירוק בהיר חדש לקוביות */
   --green-100:#d1fae5;
   --green-500:#10b981;
@@ -86,7 +86,7 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
   text-align:center;
   box-shadow:0 6px 22px rgba(0,0,0,.04);
 }
-.header-landing{ /* בעמוד הפתיחה בלבד – צהבהב כתמתם */
+.header-landing{ /* בעמוד הפתיחה בלבד – ענבר */
   background:var(--amber);
   border:1px solid #000;
   border-radius:0;
@@ -199,7 +199,6 @@ def load_df() -> pd.DataFrame:
         df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True)
     return df
 
-# טעינה טרייה – לעקוף cache כשנכנסים לעמוד הפתיחה כדי שהמנה היומית תהיה עדכנית
 def load_df_fresh() -> pd.DataFrame:
     c = conn()
     df = pd.read_sql_query(
@@ -258,7 +257,7 @@ def refresh_df():
 def score_hint(x: int) -> str:
     return "חלש" if x <= 3 else ("סביר" if x <= 6 else ("טוב" if x <= 8 else "מצוין"))
 
-# === 7 ימים אחרונים ===
+# === 7 ימים אחרונים (ל-KPI הרשת) ===
 def last7(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty: return df
     start = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=7)
@@ -397,7 +396,6 @@ auth = require_auth()
 # =========================
 # -------- MAIN UI --------
 # =========================
-# כותרת פנימית רגילה (ירקרקה עדינה)
 st.markdown('<div class="header-min"><p class="title">ג׳ירף – איכויות מזון</p></div>', unsafe_allow_html=True)
 chip = auth["branch"] if auth["role"] == "branch" else "מטה"
 st.markdown(f'<div class="status-min"><span class="chip">{chip}</span></div>', unsafe_allow_html=True)
@@ -460,32 +458,34 @@ if submitted:
             st.success("נשמר בהצלחה.")
 
 # =========================
-# --- WEEKLY / BRANCH -----
+# ----- BRANCH SUMMARY (60 יום) -----
 # =========================
-def weekly_branch_params(df: pd.DataFrame, branch: str,
-                         min_chef: int = MIN_CHEF_WEEK_M,
-                         min_dish: int = MIN_DISH_WEEK_M) -> Dict[str, Any]:
+def branch_60d_params(df: pd.DataFrame, branch: str,
+                      min_chef: int = MIN_CHEF_WEEK_M,
+                      min_dish: int = MIN_DISH_WEEK_M) -> Dict[str, Any]:
+    """
+    מחזיר מדדים עבור 60 הימים האחרונים (curr) לעומת 60 הימים שלפניהם (prev).
+    """
     if df.empty:
         return {"avg": (None, None), "best_chef": ((None, None),(None, None)),
                 "worst": (None, None), "best_dish_name": (None, None),
-                "worst_dish_name": (None, None), "n_week": 0, "n_last": 0}
+                "worst_dish_name": (None, None), "n_curr": 0, "n_prev": 0}
+
     d = df[df["branch"] == branch].copy()
     if d.empty:
         return {"avg": (None, None), "best_chef": ((None, None),(None, None)),
                 "worst": (None, None), "best_dish_name": (None, None),
-                "worst_dish_name": (None, None), "n_week": 0, "n_last": 0}
+                "worst_dish_name": (None, None), "n_curr": 0, "n_prev": 0}
 
     now = pd.Timestamp.now(tz="UTC")
-    w_start = (now - pd.Timedelta(days=int(now.dayofweek))).normalize()
-    w_end = w_start + pd.Timedelta(days=7)
-    lw_start = w_start - pd.Timedelta(days=7)
-    lw_end = w_start
+    curr_start, curr_end = now - pd.Timedelta(days=60), now
+    prev_start, prev_end = now - pd.Timedelta(days=120), now - pd.Timedelta(days=60)
 
-    sw  = d[(d["created_at"] >= w_start)  & (d["created_at"] < w_end)]
-    slw = d[(d["created_at"] >= lw_start) & (d["created_at"] < lw_end)]
+    dc = d[(d["created_at"] >= curr_start) & (d["created_at"] < curr_end)]
+    dp = d[(d["created_at"] >= prev_start) & (d["created_at"] < prev_end)]
 
-    avg_w  = float(sw["score"].mean())  if not sw.empty  else None
-    avg_lw = float(slw["score"].mean()) if not slw.empty else None
+    avg_c  = float(dc["score"].mean())  if not dc.empty  else None
+    avg_p  = float(dp["score"].mean())  if not dp.empty  else None
 
     def _chef_best_worst(frame: pd.DataFrame, min_count: int
                          ) -> Tuple[Tuple[Optional[str], Optional[float]], Tuple[Optional[str], Optional[float]]]:
@@ -508,20 +508,20 @@ def weekly_branch_params(df: pd.DataFrame, branch: str,
         if best == worst: return best, None
         return best, worst
 
-    (best_name_w, best_avg_w), (best_name_lw, best_avg_lw) = _chef_best_worst(sw,  MIN_CHEF_WEEK_M)
-    best_dish_name_w,  worst_dish_name_w  = _dish_best_worst(sw,  MIN_DISH_WEEK_M)
-    best_dish_name_lw, worst_dish_name_lw = _dish_best_worst(slw, MIN_DISH_WEEK_M)
+    (best_name_c, best_avg_c), (best_name_p, best_avg_p) = _chef_best_worst(dc, min_chef)
+    best_dish_name_c,  worst_dish_name_c  = _dish_best_worst(dc,  min_dish)
+    best_dish_name_p,  worst_dish_name_p  = _dish_best_worst(dp,  min_dish)
 
-    worst_w = float(sw.groupby("chef_name")["score"].mean().min()) if not sw.empty else None
-    worst_lw = float(slw.groupby("chef_name")["score"].mean().min()) if not slw.empty else None
+    worst_c = float(dc.groupby("chef_name")["score"].mean().min()) if not dc.empty else None
+    worst_p = float(dp.groupby("chef_name")["score"].mean().min()) if not dp.empty else None
 
     return {
-        "avg": (avg_w, avg_lw),
-        "best_chef": ((best_name_w, best_avg_w), (best_name_lw, best_avg_lw)),
-        "worst": (worst_w, worst_lw),
-        "best_dish_name": (best_dish_name_w, best_dish_name_lw),
-        "worst_dish_name": (worst_dish_name_w, worst_dish_name_lw),
-        "n_week": int(len(sw)), "n_last": int(len(slw)),
+        "avg": (avg_c, avg_p),
+        "best_chef": ((best_name_c, best_avg_c), (best_name_p, best_avg_p)),
+        "worst": (worst_c, worst_p),
+        "best_dish_name": (best_dish_name_c, best_dish_name_p),
+        "worst_dish_name": (worst_dish_name_c, worst_dish_name_p),
+        "n_curr": int(len(dc)), "n_prev": int(len(dp)),
     }
 
 def wow_delta(curr: Optional[float], prev: Optional[float]) -> str:
@@ -535,17 +535,17 @@ def wow_delta(curr: Optional[float], prev: Optional[float]) -> str:
 def fmt_num(v: Optional[float]) -> str:
     return "—" if v is None else f"<span class='num-green'>{v:.2f}</span>"
 
-def render_weekly_summary_for_branch(df: pd.DataFrame, branch: str):
-    m = weekly_branch_params(df, branch, MIN_CHEF_WEEK_M, MIN_DISH_WEEK_M)
-    avg_w,  avg_lw  = m["avg"]
-    (best_name_w, best_avg_w), (best_name_lw, best_avg_lw) = m["best_chef"]
-    worst_w, worst_lw = m["worst"]
-    best_dish_w,  best_dish_lw  = m["best_dish_name"]
-    worst_dish_w, worst_dish_lw = m["worst_dish_name"]
-    if best_dish_w and worst_dish_w and best_dish_w == worst_dish_w:
-        worst_dish_w = None
-    if best_dish_lw and worst_dish_lw and best_dish_lw == worst_dish_lw:
-        worst_dish_lw = None
+def render_branch_60d_table(df: pd.DataFrame, branch: str):
+    m = branch_60d_params(df, branch, MIN_CHEF_WEEK_M, MIN_DISH_WEEK_M)
+    avg_c,  avg_p  = m["avg"]
+    (best_name_c, best_avg_c), (best_name_p, best_avg_p) = m["best_chef"]
+    worst_c, worst_p = m["worst"]
+    best_dish_c,  best_dish_p  = m["best_dish_name"]
+    worst_dish_c, worst_dish_p = m["worst_dish_name"]
+    if best_dish_c and worst_dish_c and best_dish_c == worst_dish_c:
+        worst_dish_c = None
+    if best_dish_p and worst_dish_p and best_dish_p == worst_dish_p:
+        worst_dish_p = None
 
     def fmt_avg_name(avg: Optional[float], name: Optional[str]) -> str:
         if avg is None and not name: return "—"
@@ -558,40 +558,40 @@ def render_weekly_summary_for_branch(df: pd.DataFrame, branch: str):
       <thead>
         <tr>
           <th>פרמטר</th>
-          <th>השבוע</th>
-          <th>שבוע שעבר</th>
+          <th>60 הימים האחרונים</th>
+          <th>60 הימים שלפניהם</th>
           <th>Δ שינוי</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td><b>ממוצע ציון כללי</b></td>
-          <td>{fmt_num(avg_w)}</td>
-          <td>{fmt_num(avg_lw)}</td>
-          <td>{wow_delta(avg_w, avg_lw)}</td>
+          <td>{fmt_num(avg_c)}</td>
+          <td>{fmt_num(avg_p)}</td>
+          <td>{wow_delta(avg_c, avg_p)}</td>
         </tr>
         <tr>
           <td><b>ממוצע טבח מוביל</b> <span class="small-muted">(מינ׳ {MIN_CHEF_WEEK_M})</span></td>
-          <td>{fmt_avg_name(best_avg_w, best_name_w)}</td>
-          <td>{fmt_avg_name(best_avg_lw, best_name_lw)}</td>
-          <td>{wow_delta(best_avg_w, best_avg_lw)}</td>
+          <td>{fmt_avg_name(best_avg_c, best_name_c)}</td>
+          <td>{fmt_avg_name(best_avg_p, best_name_p)}</td>
+          <td>{wow_delta(best_avg_c, best_avg_p)}</td>
         </tr>
         <tr>
           <td><b>ממוצע טבח חלש</b> <span class="small-muted">(מינ׳ {MIN_CHEF_WEEK_M})</span></td>
-          <td>{fmt_num(worst_w)}</td>
-          <td>{fmt_num(worst_lw)}</td>
-          <td>{wow_delta(worst_w, worst_lw)}</td>
+          <td>{fmt_num(worst_c)}</td>
+          <td>{fmt_num(worst_p)}</td>
+          <td>{wow_delta(worst_c, worst_p)}</td>
         </tr>
         <tr>
           <td><b>מנה טובה</b></td>
-          <td>{best_dish_w or '—'}</td>
-          <td>{best_dish_lw or '—'}</td>
+          <td>{best_dish_c or '—'}</td>
+          <td>{best_dish_p or '—'}</td>
           <td>—</td>
         </tr>
         <tr>
           <td><b>מנה לשיפור</b></td>
-          <td>{worst_dish_w or '—'}</td>
-          <td>{worst_dish_lw or '—'}</td>
+          <td>{worst_dish_c or '—'}</td>
+          <td>{worst_dish_p or '—'}</td>
           <td>—</td>
         </tr>
       </tbody>
@@ -599,8 +599,9 @@ def render_weekly_summary_for_branch(df: pd.DataFrame, branch: str):
     """
     st.markdown(html, unsafe_allow_html=True)
 
-# --- META KPI + סיכומים ---
+# --- META KPI + סיכומי 60 יום ---
 if auth["role"] == "meta" and not df.empty:
+    # KPI רשת (7 ימים) — ללא שינוי
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### KPI רשת – 7 ימים אחרונים")
 
@@ -642,26 +643,24 @@ if auth["role"] == "meta" and not df.empty:
              f"{worst_dish[0]} · <span class='num-green'>{worst_dish[1]:.2f}</span> (N={worst_dish[2]})")
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # סיכום לפי סניף — 60 יום
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown("### סיכום שבועי לפי סניף")
+    st.markdown("### סיכום לפי סניף — 60 יום")
     for b in BRANCHES:
         with st.expander(b, expanded=False):
-            render_weekly_summary_for_branch(df, b)
+            render_branch_60d_table(df, b)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- BRANCH weekly summary ---
+# --- BRANCH summary (60 יום) ---
 if auth["role"] == "branch" and not df.empty:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown(f"### סיכום שבועי — {auth['branch']}")
-    render_weekly_summary_for_branch(df, auth["branch"])
+    st.markdown(f"### סיכום 60 יום — {auth['branch']}")
+    render_branch_60d_table(df, auth["branch"])
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
 # ----- GPT SECTIONS ------
 # =========================
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown("### ניתוח עם GPT")
-
 def df_to_csv_for_llm(df_in: pd.DataFrame, max_rows: int = 400) -> str:
     d = df_in.copy()
     if len(d) > max_rows: d = d.head(max_rows)
@@ -692,34 +691,52 @@ def call_openai(user_prompt: str) -> str:
     except Exception as e:
         return f"שגיאה בקריאה ל-OpenAI: {e}"
 
-df2 = load_df()
-if not df2.empty:
-    if st.button("הפעל ניתוח"):
-        table_csv = df_to_csv_for_llm(df2)
-        up = f"הנה הטבלה בפורמט CSV:\n{table_csv}\n\nסכם מגמות, חריגים והמלצות קצרות לניהול."
-        with st.spinner("מנתח..."):
-            ans = call_openai(up)
-        st.write(ans)
+# --- כרטיס ניתוח עם GPT ---
+st.markdown('<div class="card">', unsafe_allow_html=True)
+st.markdown("### ניתוח עם GPT")
+
+# הגבלת המידע לניתוח לסניף בלבד
+if auth["role"] == "branch":
+    df_ai = df[df["branch"] == auth["branch"]].copy()
+    branch_for_ai = auth["branch"]
 else:
-    st.info("אין נתונים לניתוח עדיין.")
+    branch_for_ai = st.selectbox("בחר/י סניף לניתוח", options=["— בחר —"] + BRANCHES, index=0, key="ai_branch_pick")
+    df_ai = df[df["branch"] == branch_for_ai].copy() if branch_for_ai and branch_for_ai != "— בחר —" else pd.DataFrame()
+
+if not df_ai.empty and st.button("הפעל ניתוח"):
+    table_csv = df_to_csv_for_llm(df_ai)
+    up = (
+        f"סניף לניתוח: {branch_for_ai}\n"
+        f"הנה הטבלה בפורמט CSV (עד 400 שורות):\n{table_csv}\n\n"
+        f"סכם מגמות, חריגים והמלצות קצרות לניהול הסניף בלבד."
+    )
+    with st.spinner("מנתח..."):
+        ans = call_openai(up)
+    st.write(ans)
+elif auth["role"] == "meta" and (not branch_for_ai or branch_for_ai == "— בחר —"):
+    st.info("בחר/י סניף כדי להפעיל ניתוח.")
+elif df_ai.empty:
+    st.info("אין נתונים לניתוח עבור הסניף שנבחר.")
 st.markdown('</div>', unsafe_allow_html=True)
 
+# --- כרטיס צ'אט אוהד ---
 st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown("### שאל את אוהד")
+st.markdown("### שאל את אוהד (על הסניף בלבד)")
 user_q = st.text_input("שאלה על הנתונים", value="")
 if st.button("שלח"):
-    if not df2.empty and user_q.strip():
-        table_csv = df_to_csv_for_llm(df2)
+    if not user_q.strip():
+        st.warning("נא להזין שאלה.")
+    elif df_ai.empty:
+        st.warning("אין נתונים לסניף הזה כרגע.")
+    else:
+        table_csv = df_to_csv_for_llm(df_ai)
         up = (
+            f"סניף מיקוד: {branch_for_ai}\n"
             f"שאלה: {user_q}\n\n"
-            f"הנה הטבלה בפורמט CSV (עד 400 שורות):\n{table_csv}\n\n"
-            f"ענה בעברית ותן נימוק קצר לכל מסקנה."
+            f"הנה טבלת הנתונים של הסניף (עד 400 שורות, CSV):\n{table_csv}\n\n"
+            f"ענה בעברית, קצר ולעניין, והישאר ממוקד בסניף בלבד."
         )
         with st.spinner("מנתח..."):
             ans = call_openai(up)
         st.write(ans)
-    elif df2.empty:
-        st.warning("אין נתונים לניתוח כרגע.")
-    else:
-        st.warning("נא להזין שאלה.")
 st.markdown('</div>', unsafe_allow_html=True)
