@@ -1,4 +1,4 @@
-# app.py — ג'ירף – איכויות מזון (דף פתיחה 3×3 קוביות ירוקות עם גבול שחור + כל הפונקציות)
+# app.py — ג'ירף – איכויות מזון (Landing 3×3 אמיתי במובייל + מטה עם טבחים דינמיים + מנה יומית מתעדכנת)
 from __future__ import annotations
 import os, json, sqlite3
 from datetime import datetime
@@ -41,7 +41,6 @@ CHEFS_BY_BRANCH: Dict[str, List[str]] = {
     "ראשל״צ": ["ג'או", "זאנג", "צ'ה", "ליו", "מא", "רן"],
     "חיפה": ["סונג", "לי", "ליו", "ג'או"],
     "רמה״ח": ["ין", "סי", "ליו", "הואן", "פרנק", "זאנג", "זאו לי"],
-    "רמהח":  ["ין", "סי", "ליו", "הואן", "פרנק", "זאנג", "זאו לי"],  # אליאס
     "לנדמרק": [
         "יו", "מא", "וואנג הואנבין", "וואנג ג'ינלאי", "ג'או", "אוליבר", "זאנג", "בי",
         "יאנג זימינג", "יאנג רונגשטן", "דונג", "וואנג פוקוואן"
@@ -80,8 +79,8 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
 /* כותרת עליונה בתוך ריבוע ירוק עם גבול שחור דק (מרובע) */
 .header-min{
   background:var(--green-50);
-  border:1px solid #000;         /* גבול שחור דק */
-  border-radius:0;               /* מרובע */
+  border:1px solid #000;
+  border-radius:0;
   padding:16px;
   margin-bottom:14px;
   text-align:center;
@@ -99,9 +98,23 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
 .daily-pick-login .dish{font-weight:900; font-size:18px;}
 .daily-pick-login .avg{color:var(--green-500); font-weight:800;}
 
-.card{background:var(--surface); border:1px solid var(--border); border-radius:16px;
-  padding:16px; box-shadow:0 4px 18px rgba(10,20,40,.04); margin-bottom:12px;}
+/* Grid 3×3 אמיתי גם במובייל */
+.branch-grid{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
+}
+@media (max-width:480px){
+  .branch-grid{ grid-template-columns:repeat(3,1fr); } /* נשאר 3 גם במובייל צר */
+}
+.branch-card{
+  display:flex; align-items:center; justify-content:center;
+  background:var(--green-50); color:#000; text-decoration:none;
+  border:2px solid #000; border-radius:12px; padding:18px 8px;
+  font-weight:900; min-height:64px; user-select:none;
+  box-shadow:0 4px 14px rgba(0,0,0,.06);
+}
+.branch-card:active{ transform: translateY(1px); }
 
+/* Status chip */
 .status-min{display:flex; align-items:center; gap:10px; justify-content:center; background:#fff;
   border:1px solid var(--border); border-radius:14px; padding:10px 12px; margin:12px 0;}
 .chip{padding:4px 10px; border:1px solid var(--green-100); border-radius:999px;
@@ -132,15 +145,6 @@ table.small th {font-weight:900; color:#000;}
 
 /* הסתרת “Press Enter to apply” */
 div[data-testid="stWidgetInstructions"]{display:none !important;}
-
-/* כפתורי סניפים: קוביות ירוקות עם גבול שחור, טקסט שחור */
-.branch-btn button{
-  width:100%; background:var(--green-50); color:#000;
-  border:2px solid #000; border-radius:12px;
-  padding:16px 10px; font-weight:800;
-  box-shadow:0 4px 14px rgba(0,0,0,.06);
-}
-.branch-btn button:hover{ filter:brightness(0.98); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -288,51 +292,78 @@ def network_best_worst_dish_last7(df: pd.DataFrame, min_n: int
     return best_t, worst_t
 
 # =========================
+# ------ QUERY PARAMS -----
+# =========================
+def qp_get(key: str) -> Optional[str]:
+    # תמיכה בגרסאות שונות של סטרימליט
+    try:
+        return st.query_params.get(key)
+    except Exception:
+        q = st.experimental_get_query_params()
+        vals = q.get(key, [])
+        return vals[0] if vals else None
+
+def qp_set(**kwargs):
+    try:
+        st.query_params.clear()
+        st.query_params.update(kwargs)
+    except Exception:
+        st.experimental_set_query_params(**kwargs)
+
+def qp_clear():
+    try:
+        st.query_params.clear()
+    except Exception:
+        st.experimental_set_query_params()
+
+# =========================
 # ------ LOGIN / AUTH -----
 # =========================
-def branch_button(label: str, key: str) -> bool:
-    with st.container():
-        st.markdown('<div class="branch-btn">', unsafe_allow_html=True)
-        clicked = st.button(label, key=key, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        return clicked
+def render_landing():
+    # כותרת + מנה יומית
+    st.markdown('<div class="header-min"><p class="title">ג׳ירף – איכויות מזון</p></div>', unsafe_allow_html=True)
+
+    df_login = load_df()
+    name, avg, n = worst_network_dish_last7(df_login, MIN_DISH_WEEK_M)
+    if name:
+        st.markdown(
+            f"<div class='daily-pick-login'><div class='ttl'>מנה יומית לבדיקה</div>"
+            f"<div class='dish'>{name}</div>"
+            f"<div class='avg'>ממוצע רשת (7 ימים): {avg:.2f} · N={n}</div></div>",
+            unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='daily-pick-login'><div class='ttl'>מנה יומית לבדיקה</div><div class='dish'>—</div></div>",
+                    unsafe_allow_html=True)
+
+    # Grid 3×3 אמיתי — לינקים עם פרמטר URL
+    items = ["מטה"] + BRANCHES  # 9 פריטים
+    links = "".join([f"<a class='branch-card' href='?select={item}'>{item}</a>" for item in items])
+    st.markdown(f"<div class='branch-grid'>{links}</div>", unsafe_allow_html=True)
+
+def consume_select_param():
+    sel = qp_get("select")
+    if not sel:
+        return False
+    if sel == "מטה":
+        st.session_state.auth = {"role": "meta", "branch": None}
+    elif sel in BRANCHES:
+        st.session_state.auth = {"role": "branch", "branch": sel}
+    # ניקוי ה-URL והפעלה מחדש
+    qp_clear()
+    st.experimental_rerun()
+    return True  # לא יגיע לכאן
 
 def require_auth() -> dict:
     if "auth" not in st.session_state:
         st.session_state.auth = {"role": None, "branch": None}
     auth = st.session_state.auth
 
+    # אם יש בחירה דרך ה-URL — נטפל מייד
+    if consume_select_param():
+        st.stop()
+
     if not auth["role"]:
-        # כותרת + מנה יומית
-        st.markdown('<div class="header-min"><p class="title">ג׳ירף – איכויות מזון</p></div>', unsafe_allow_html=True)
-
-        df_login = load_df()
-        name, avg, n = worst_network_dish_last7(df_login, MIN_DISH_WEEK_M)
-        if name:
-            st.markdown(
-                f"<div class='daily-pick-login'><div class='ttl'>מנה יומית לבדיקה</div>"
-                f"<div class='dish'>{name}</div>"
-                f"<div class='avg'>ממוצע רשת (7 ימים): {avg:.2f} · N={n}</div></div>",
-                unsafe_allow_html=True)
-        else:
-            st.markdown("<div class='daily-pick-login'><div class='ttl'>מנה יומית לבדיקה</div><div class='dish'>—</div></div>",
-                        unsafe_allow_html=True)
-
-        # רשימת קוביות – 3×3 (מטה + 8 סניפים)
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("#### בחר/י סניף או מטה")
-        items = ["מטה"] + BRANCHES  # 9 פריטים = 3×3
-        for start in range(0, len(items), 3):
-            cols = st.columns(3)
-            for j, name_ in enumerate(items[start:start+3]):
-                with cols[j]:
-                    if branch_button(name_, key=f"btn_{name_}"):
-                        if name_ == "מטה":
-                            st.session_state.auth = {"role": "meta", "branch": None}
-                        else:
-                            st.session_state.auth = {"role": "branch", "branch": name_}
-                        st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+        render_landing()
         st.stop()
     return auth
 
@@ -347,13 +378,16 @@ st.markdown(f'<div class="status-min"><span class="chip">{chip}</span></div>', u
 
 df = load_df()
 
+# ===== בחירת סניף להזנה במטה — מחוץ לטופס =====
+if auth["role"] == "meta":
+    st.markdown("#### בחירת סניף להזנה (מטה)")
+    st.selectbox("בחר/י סניף להזנה", options=["— בחר —"] + BRANCHES, index=0, key="meta_branch_select")
+
 # -------- FORM --------
 st.markdown('<div class="card">', unsafe_allow_html=True)
 with st.form("quality_form", clear_on_submit=False):
-    # בסניף – אין שדה סניף; במטה – בוחרים סניף להזנה
     if auth["role"] == "meta":
-        branch_opt = ["— בחר —"] + BRANCHES
-        selected_branch = st.selectbox("בחר/י סניף להזנה *", options=branch_opt, index=0)
+        selected_branch = st.session_state.get("meta_branch_select", "— בחר —")
     else:
         selected_branch = auth["branch"]
 
@@ -364,28 +398,24 @@ with st.form("quality_form", clear_on_submit=False):
         chef_options = ["— בחר —"]
         if selected_branch and selected_branch != "— בחר —":
             chef_options += CHEFS_BY_BRANCH.get(selected_branch, [])
-        chef_choice = st.selectbox("שם הטבח (מרשימה)", options=chef_options, index=0)
+        chef_choice = st.selectbox("שם הטבח (מרשימה)", options=chef_options, index=0, key="chef_from_list")
 
     # 2) הקלדה ידנית (לא חובה)
     with col2:
-        chef_manual = st.text_input("שם הטבח — הקלדה ידנית (לא חובה)", value="")
+        chef_manual = st.text_input("שם הטבח — הקלדה ידנית (לא חובה)", value="", key="chef_manual_input")
 
     colA, colB = st.columns(2)
     with colA:
-        dish_options = ["— בחר —"] + DISHES
-        dish = st.selectbox("שם המנה *", options=dish_options, index=0)
-
+        dish = st.selectbox("שם המנה *", options=["— בחר —"] + DISHES, index=0)
     with colB:
-        score_options = ["— בחר —"] + list(range(1, 11))
         score_choice = st.selectbox(
             "ציון איכות *",
-            options=score_options,
+            options=["— בחר —"] + list(range(1, 11)),
             index=0,
-            format_func=lambda x: f"{x} - {score_hint(x)}" if isinstance(x, int) else x
+            format_func=lambda x: f"{x} - {score_hint(x)}" if isinstance(x, int) else x,
         )
 
     notes = st.text_area("הערות (לא חובה)", value="")
-
     submitted = st.form_submit_button("שמור בדיקה")
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -394,7 +424,6 @@ if submitted:
     if auth["role"] == "meta" and (not selected_branch or selected_branch == "— בחר —"):
         st.error("נא לבחור סניף להזנה.")
     else:
-        # שם טבח – ידני גובר על רשימה
         chef_final = None
         if chef_manual.strip():
             chef_final = chef_manual.strip()
@@ -413,7 +442,7 @@ if submitted:
             st.success("נשמר בהצלחה.")
 
 # =========================
-# --- WEEKLY BY BRANCH ----
+# --- WEEKLY / BRANCH -----
 # =========================
 def weekly_branch_params(df: pd.DataFrame, branch: str,
                          min_chef: int = MIN_CHEF_WEEK_M,
@@ -429,6 +458,7 @@ def weekly_branch_params(df: pd.DataFrame, branch: str,
                 "worst_dish_name": (None, None), "n_week": 0, "n_last": 0}
 
     now = pd.Timestamp.now(tz="UTC")
+    # תחילת השבוע (יום שני/ראשון — כאן לפי dayofweek: שני=0; מתאים להשוואה עקבית)
     w_start = (now - pd.Timedelta(days=int(now.dayofweek))).normalize()
     w_end = w_start + pd.Timedelta(days=7)
     lw_start = w_start - pd.Timedelta(days=7)
