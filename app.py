@@ -1,8 +1,8 @@
-# app.py — ג'ירף מטבחים · איכויות מזון (Mobile UI + Embedded Logo)
+# app.py — ג'ירף מטבחים · איכויות מזון (Mobile UI, no logo)
 # הרצה מקומית: streamlit run app.py
 
 from __future__ import annotations
-import os, json, sqlite3, base64
+import os, json, sqlite3
 from datetime import datetime
 from typing import List, Optional, Tuple
 
@@ -38,29 +38,6 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapi
 COLOR_NET = "#93C5FD"     # כחול בהיר
 COLOR_BRANCH = "#9AE6B4"  # ירוק בהיר
 
-# ===== לוגו מוטמע (Base64) ונשמר לקובץ =====
-LOGO_PATH = "assets/giraffe-logo.png"
-# הלוגו כאן הוא placeholder בטוח; תוכל להחליף בבסיס־64 אחר אם תרצה.
-LOGO_PNG_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAANgAAADYCAMAAAC+/t3fAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8"
-    "AAAAiklEQVR4Ae3BMQEAAADCoPVPbQdvoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHsE5K0AAXM8"
-    "yQAAAABJRU5ErkJggg=="
-)
-
-def _ensure_logo():
-    try:
-        if not os.path.exists("assets"):
-            os.makedirs("assets", exist_ok=True)
-        if not os.path.exists(LOGO_PATH):
-            with open(LOGO_PATH, "wb") as f:
-                f.write(base64.b64decode(LOGO_PNG_B64))
-    except Exception:
-        pass
-
-_ensure_logo()
-
 # =========================
 # ---------- MOBILE CSS ---
 # =========================
@@ -81,15 +58,11 @@ html, body, .main, .block-container, .sidebar .sidebar-content{direction:rtl;}
 /* מסגרת מובייל */
 .mobile-frame{max-width:430px;margin:0 auto;padding:10px 14px 80px;}
 
-/* כותרת ממורכזת עם לוגו */
+/* כותרת ממורכזת ללא לוגו */
 .header-mobile{
   background:linear-gradient(180deg,var(--primary-50) 0%, #ffffff 90%);
   border:1px solid #d9f6ee; border-radius:18px; padding:18px 16px 14px;
   margin:12px auto 16px; text-align:center; box-shadow:var(--shadow);
-}
-.header-mobile img{
-  width:76px; height:76px; object-fit:cover; border-radius:16px;
-  display:inline-block; margin-bottom:8px; background:#000;
 }
 .header-mobile .title{font-weight:900; font-size:22px; color:var(--primary-600); margin:0;}
 
@@ -153,10 +126,11 @@ st.markdown('<div class="mobile-frame">', unsafe_allow_html=True)
 # =========================
 # ------- HEADER ----------
 # =========================
-st.markdown('<div class="header-mobile">', unsafe_allow_html=True)
-st.image(LOGO_PATH)
-st.markdown('<p class="title">איכויות מזון</p>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("""
+<div class="header-mobile">
+  <p class="title">איכויות מזון</p>
+</div>
+""", unsafe_allow_html=True)
 
 # =========================
 # ------- DATABASE --------
