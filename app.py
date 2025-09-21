@@ -1,4 +1,4 @@
-# app.py — ג'ירף – איכויות מזון
+# app.py — ג'ירף – איכויות מזון (עם KPI רשת ו"מנה יומית לבדיקה")
 from __future__ import annotations
 import os, json, sqlite3
 from datetime import datetime, timedelta
@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple, Dict, Any
 
 import pandas as pd
 import streamlit as st
+import altair as alt  # לגרף עמודות KPI
 
 # ===== Google Sheets (אופציונלי) =====
 try:
@@ -38,7 +39,7 @@ CHEFS_BY_BRANCH: Dict[str, List[str]] = {
     "סביון": ["בין בין", "וואנג", "וו", "סונג", "ג'או"],
     "ראשל״צ": ["ג'או", "זאנג", "צ'ה", "ליו", "מא", "רן"],
     "חיפה": ["סונג", "לי", "ליו", "ג'או"],
-    "‌رמה״ח": ["ין", "סי", "ליו", "הואן", "פרנק", "זאנג", "זאו לי"],
+    "רמה״ח": ["ין", "סי", "ליו", "הואן", "פרנק", "זאנג", "זאו לי"],
     "רמהח":  ["ין", "סי", "ליו", "הואן", "פרנק", "זאנג", "זאו לי"],  # אליאס
 }
 
@@ -122,7 +123,7 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
 /* רדיו שחור מלא */
 .stRadio [data-baseweb="radio"] svg{ color:#000 !important; fill:#000 !important; }
 
-/* נסיון לפתיחת select למטה */
+/* לפתוח select למטה */
 .stSelectbox {overflow:visible !important;}
 div[data-baseweb="select"] + div[role="listbox"]{ bottom:auto !important; top: calc(100% + 8px) !important; max-height:50vh !important; }
 
@@ -245,38 +246,58 @@ def score_hint(x: int) -> str:
     return "חלש" if x <= 3 else ("סביר" if x <= 6 else ("טוב" if x <= 8 else "מצוין"))
 
 # =========================
-# --- WEEKLY / NETWORK ----
+# --- WEEK & NETWORK UTILS -
 # =========================
-def _week_bounds(ref: datetime) -> Tuple[datetime, datetime]:
-    start = ref - timedelta(days=ref.weekday())
-    start = datetime(start.year, start.month, start.day, tzinfo=ref.tzinfo)
-    end = start + timedelta(days=7)
+def _monday_bounds(ts: pd.Timestamp) -> Tuple[pd.Timestamp, pd.Timestamp]:
+    """תחילת/סוף שבוע (שני-ראשון) ביחס ל-tz של ts"""
+    ts = ts.tz_convert("UTC")
+    start = (ts.normalize() - pd.Timedelta(days=int(ts.dayofweek))).tz_convert("UTC")
+    end = start + pd.Timedelta(days=7)
     return start, end
 
-def _chef_best_worst(frame: pd.DataFrame, min_count: int
-                     ) -> Tuple[Tuple[Optional[str], Optional[float]], Tuple[Optional[str], Optional[float]]]:
-    if frame.empty:
-        return (None, None), (None, None)
-    g = frame.groupby("chef_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
-    g = g[g["n"] >= min_count]
-    if g.empty:
-        return (None, None), (None, None)
-    best_row  = g.loc[g["avg"].idxmax()]
-    worst_row = g.loc[g["avg"].idxmin()]
-    return (str(best_row["chef_name"]), float(best_row["avg"])), (str(worst_row["chef_name"]), float(worst_row["avg"]))
+def last7(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty: return df
+    start = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=7)
+    return df[df["created_at"] >= start].copy()
 
-def _dish_best_worst(frame: pd.DataFrame, min_count: int
-                     ) -> Tuple[Optional[str], Optional[str]]:
-    if frame.empty:
-        return None, None
-    g = frame.groupby("dish_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
-    g = g[g["n"] >= min_count]
-    if g.empty:
-        return None, None
-    best_row  = g.loc[g["avg"].idxmax()]
-    worst_row = g.loc[g["avg"].idxmin()]
-    return str(best_row["dish_name"]), str(worst_row["dish_name"])
+def network_branch_avgs_last7(df: pd.DataFrame) -> pd.DataFrame:
+    d = last7(df)
+    if d.empty: return pd.DataFrame(columns=["branch","avg"])
+    g = d.groupby("branch")["score"].mean().reset_index().rename(columns={"score":"avg"})
+    return g.sort_values("avg", ascending=False)
 
+def network_top_chef_last7(df: pd.DataFrame, min_n: int) -> Tuple[Optional[str], Optional[str], Optional[float], int]:
+    d = last7(df)
+    if d.empty: return None, None, None, 0
+    g = d.groupby("chef_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
+    g = g[g["n"] >= min_n]
+    if g.empty: return None, None, None, 0
+    row = g.loc[g["avg"].idxmax()]
+    chef = str(row["chef_name"]); avg = float(row["avg"]); n = int(row["n"])
+    # סניף דומיננטי של הטבח
+    try:
+        branch_mode = d[d["chef_name"] == chef]["branch"].mode().iat[0]
+    except Exception:
+        branch_mode = None
+    return chef, (None if branch_mode is None else str(branch_mode)), avg, n
+
+def network_best_worst_dish_last7(df: pd.DataFrame, min_n: int
+                                  ) -> Tuple[Optional[Tuple[str,float,int]], Optional[Tuple[str,float,int]]]:
+    d = last7(df)
+    if d.empty: return None, None
+    g = d.groupby("dish_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
+    g = g[g["n"] >= min_n]
+    if g.empty: return None, None
+    best = g.loc[g["avg"].idxmax()]
+    worst = g.loc[g["avg"].idxmin()]
+    best_t = (str(best["dish_name"]), float(best["avg"]), int(best["n"]))
+    worst_t = (str(worst["dish_name"]), float(worst["avg"]), int(worst["n"]))
+    # אם זהה למנה הטובה — לא מציגים מנה לשיפור
+    if best_t[0] == worst_t[0]:
+        return best_t, None
+    return best_t, worst_t
+
+# --- Weekly by branch (כמו קודם, עם טיפול שמות זהים) ---
 def weekly_branch_params(df: pd.DataFrame, branch: str,
                          min_chef: int = MIN_CHEF_WEEK_M,
                          min_dish: int = MIN_DISH_WEEK_M) -> Dict[str, Any]:
@@ -290,15 +311,38 @@ def weekly_branch_params(df: pd.DataFrame, branch: str,
                 "worst": (None, None), "best_dish_name": (None, None),
                 "worst_dish_name": (None, None), "n_week": 0, "n_last": 0}
 
-    now = datetime.utcnow().astimezone(tz=d["created_at"].dt.tz)
-    w_start, w_end   = _week_bounds(now)
-    lw_start, lw_end = _week_bounds(now - timedelta(days=7))
+    now = pd.Timestamp.now(tz="UTC")
+    w_start, w_end   = _monday_bounds(now)
+    lw_start, lw_end = _monday_bounds(now - pd.Timedelta(days=7))
 
     sw  = d[(d["created_at"] >= w_start)  & (d["created_at"] < w_end)]
     slw = d[(d["created_at"] >= lw_start) & (d["created_at"] < lw_end)]
 
     avg_w  = float(sw["score"].mean())  if not sw.empty  else None
     avg_lw = float(slw["score"].mean()) if not slw.empty else None
+
+    def _chef_best_worst(frame: pd.DataFrame, min_count: int
+                         ) -> Tuple[Tuple[Optional[str], Optional[float]], Tuple[Optional[str], Optional[float]]]:
+        if frame.empty: return (None, None), (None, None)
+        g = frame.groupby("chef_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
+        g = g[g["n"] >= min_count]
+        if g.empty: return (None, None), (None, None)
+        best_row  = g.loc[g["avg"].idxmax()]
+        worst_row = g.loc[g["avg"].idxmin()]
+        return (str(best_row["chef_name"]), float(best_row["avg"])), (str(worst_row["chef_name"]), float(worst_row["avg"]))
+
+    def _dish_best_worst(frame: pd.DataFrame, min_count: int
+                         ) -> Tuple[Optional[str], Optional[str]]:
+        if frame.empty: return None, None
+        g = frame.groupby("dish_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
+        g = g[g["n"] >= min_count]
+        if g.empty: return None, None
+        best_row  = g.loc[g["avg"].idxmax()]
+        worst_row = g.loc[g["avg"].idxmin()]
+        best, worst = str(best_row["dish_name"]), str(worst_row["dish_name"])
+        if best == worst:
+            return best, None
+        return best, worst
 
     (best_name_w, best_avg_w), (best_name_lw, best_avg_lw) = _chef_best_worst(sw,  min_chef)
 
@@ -328,20 +372,14 @@ def wow_delta(curr: Optional[float], prev: Optional[float]) -> str:
 def fmt_num(v: Optional[float]) -> str:
     return "—" if v is None else f"<span class='num-green'>{v:.2f}</span>"
 
-# === מנה יומית לרשת (7 ימים אחרונים) — תיקון TZ ===
+# === מנה יומית לרשת (7 ימים אחרונים) ===
 def worst_network_dish_last7(df: pd.DataFrame, min_count: int = MIN_DISH_WEEK_M
                              ) -> Tuple[Optional[str], Optional[float], int]:
-    if df.empty or "created_at" not in df.columns:
-        return None, None, 0
-    now = pd.Timestamp.now(tz="UTC")
-    start = now - pd.Timedelta(days=7)
-    d = df[df["created_at"] >= start]
-    if d.empty:
-        return None, None, 0
+    d = last7(df)
+    if d.empty: return None, None, 0
     g = d.groupby("dish_name").agg(n=("id","count"), avg=("score","mean")).reset_index()
     g = g[g["n"] >= min_count]
-    if g.empty:
-        return None, None, 0
+    if g.empty: return None, None, 0
     row = g.loc[g["avg"].idxmin()]
     return str(row["dish_name"]), float(row["avg"]), int(row["n"])
 
@@ -411,7 +449,7 @@ def show_big_toast(msg: str, icon: str = "✅"):
             if(!el) return;
             setTimeout(function(){{
               if(el && el.parentNode) {{ el.parentNode.removeChild(el); }}
-            }}, 5000);   // 5 שניות
+            }}, 5000);
           }})();
         </script>
         """,
@@ -518,7 +556,8 @@ if submitted:
 # =========================
 # --- WEEKLY BY BRANCH ----
 # =========================
-if not df.empty:
+# מוצג ל"סניף" (במטה נציג אחרי KPI)
+if auth["role"] == "branch" and not df.empty:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### סיכום שבועי לפי סניף")
 
@@ -529,6 +568,12 @@ if not df.empty:
         worst_w, worst_lw = m["worst"]
         best_dish_w,  best_dish_lw  = m["best_dish_name"]
         worst_dish_w, worst_dish_lw = m["worst_dish_name"]
+
+        # אם זהה — לא מציגים מנה לשיפור
+        if best_dish_w and worst_dish_w and best_dish_w == worst_dish_w:
+            worst_dish_w = None
+        if best_dish_lw and worst_dish_lw and best_dish_lw == worst_dish_lw:
+            worst_dish_lw = None
 
         def fmt_avg_name(avg: Optional[float], name: Optional[str]) -> str:
             if avg is None and not name: return "—"
@@ -583,12 +628,7 @@ if not df.empty:
         st.markdown(f"**{branch}**", unsafe_allow_html=True)
         st.markdown(html, unsafe_allow_html=True)
 
-    if auth["role"] == "branch":
-        weekly_branch_params_ui(auth["branch"])
-    else:
-        for b in BRANCHES:
-            with st.expander(b, expanded=False):
-                weekly_branch_params_ui(b)
+    weekly_branch_params_ui(auth["branch"])
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
@@ -596,34 +636,110 @@ if not df.empty:
 # =========================
 if auth["role"] == "meta" and not df.empty:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown("### KPI רשת – הטוב והחלש (השבוע)")
+    st.markdown("### KPI רשת – 7 ימים אחרונים")
 
-    week_values = {}
+    # 1) גרף עמודות ממוצע ציון לפי סניף
+    g = network_branch_avgs_last7(df)
+    if not g.empty:
+        chart = (
+            alt.Chart(g)
+            .mark_bar(size=36)
+            .encode(
+                x=alt.X("branch:N", sort='-y', title=None),  # הגבוה ביותר בצד שמאל
+                y=alt.Y("avg:Q", scale=alt.Scale(domain=(0, 10)), title=None),
+                tooltip=[alt.Tooltip("branch:N", title="סניף"),
+                         alt.Tooltip("avg:Q", title="ממוצע", format=".2f")]
+            )
+        )
+        st.altair_chart(chart, use_container_width=True)
+    else:
+        st.info("אין מספיק נתונים לגרף סניפים.")
+
+    # 2) טבח מוביל ברשת
+    chef, chef_branch, chef_avg, chef_n = network_top_chef_last7(df, MIN_CHEF_WEEK_M)
+
+    # 3) ו-4) המנה הטובה / לשיפור ברשת
+    best_dish, worst_dish = network_best_worst_dish_last7(df, MIN_DISH_WEEK_M)
+    # best_dish / worst_dish הם tuples (name, avg, n) או None
+
+    def line(name, value):
+        st.markdown(f"- **{name}:** {value}", unsafe_allow_html=True)
+
+    line("ממוצע טבח מוביל", "—" if chef is None else f"{chef} · {chef_branch or ''} · <span class='num-green'>{chef_avg:.2f}</span>")
+    line("ממוצע מנה הכי גבוה", "—" if not best_dish else f"{best_dish[0]} · <span class='num-green'>{best_dish[1]:.2f}</span> (N={best_dish[2]})")
+    if worst_dish is not None:  # לא מציגים אם זהה לטובה
+        line("ממוצע מנה הכי נמוך", f"{worst_dish[0]} · <span class='num-green'>{worst_dish[1]:.2f}</span> (N={worst_dish[2]})")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # 5) סיכום שבועי לפי סניף — מוצג אחרי KPI
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown("### סיכום שבועי לפי סניף")
     for b in BRANCHES:
-        m = weekly_branch_params(df, b, MIN_CHEF_WEEK_M, MIN_DISH_WEEK_M)
-        week_values[b] = {"avg": m["avg"][0], "best": m["best_chef"][0][1], "worst": m["worst"][0]}
+        with st.expander(b, expanded=False):
+            m = weekly_branch_params(df, b, MIN_CHEF_WEEK_M, MIN_DISH_WEEK_M)
+            avg_w,  avg_lw  = m["avg"]
+            (best_name_w, best_avg_w), (best_name_lw, best_avg_lw) = m["best_chef"]
+            worst_w, worst_lw = m["worst"]
+            best_dish_w,  best_dish_lw  = m["best_dish_name"]
+            worst_dish_w, worst_dish_lw = m["worst_dish_name"]
 
-    def pick_best_worst(key: str) -> Tuple[Optional[Tuple[str,float]], Optional[Tuple[str,float]]]:
-        vals = [(b, v[key]) for b, v in week_values.items() if v[key] is not None]
-        if not vals: return None, None
-        best = max(vals, key=lambda x: x[1])
-        worst = min(vals, key=lambda x: x[1])
-        return best, worst
+            if best_dish_w and worst_dish_w and best_dish_w == worst_dish_w:
+                worst_dish_w = None
+            if best_dish_lw and worst_dish_lw and best_dish_lw == worst_dish_lw:
+                worst_dish_lw = None
 
-    rows = []
-    for label, key in [("ממוצע ציון כללי", "avg"),
-                       ("ממוצע טבח מוביל", "best"),
-                       ("ממוצע טבח חלש", "worst")]:
-        best, worst = pick_best_worst(key)
-        best_txt  = "—" if best  is None else f"{best[0]} · <span class='num-green'>{best[1]:.2f}</span>"
-        worst_txt = "—" if worst is None else f"{worst[0]} · <span class='num-green'>{worst[1]:.2f}</span>"
-        rows.append((label, best_txt, worst_txt))
+            def fmt_avg_name(avg: Optional[float], name: Optional[str]) -> str:
+                if avg is None and not name: return "—"
+                if avg is None: return f"{name}"
+                if not name: return f"<span class='num-green'>{avg:.2f}</span>"
+                return f"<span class='num-green'>{avg:.2f}</span> · {name}"
 
-    html = "<table class='small'><thead><tr><th>פרמטר</th><th>הטוב ביותר</th><th>הכי פחות טוב</th></tr></thead><tbody>"
-    for name, best_txt, worst_txt in rows:
-        html += f"<tr><td><b>{name}</b></td><td>{best_txt}</td><td>{worst_txt}</td></tr>"
-    html += "</tbody></table>"
-    st.markdown(html, unsafe_allow_html=True)
+            html = f"""
+            <table class="small">
+              <thead>
+                <tr>
+                  <th>פרמטר</th>
+                  <th>השבוע</th>
+                  <th>שבוע שעבר</th>
+                  <th>Δ שינוי</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><b>ממוצע ציון כללי</b></td>
+                  <td>{fmt_num(avg_w)}</td>
+                  <td>{fmt_num(avg_lw)}</td>
+                  <td>{wow_delta(avg_w, avg_lw)}</td>
+                </tr>
+                <tr>
+                  <td><b>ממוצע טבח מוביל</b> <span class="small-muted">(מינ׳ {MIN_CHEF_WEEK_M})</span></td>
+                  <td>{fmt_avg_name(best_avg_w, best_name_w)}</td>
+                  <td>{fmt_avg_name(best_avg_lw, best_name_lw)}</td>
+                  <td>{wow_delta(best_avg_w, best_avg_lw)}</td>
+                </tr>
+                <tr>
+                  <td><b>ממוצע טבח חלש</b> <span class="small-muted">(מינ׳ {MIN_CHEF_WEEK_M})</span></td>
+                  <td>{fmt_num(worst_w)}</td>
+                  <td>{fmt_num(worst_lw)}</td>
+                  <td>{wow_delta(worst_w, worst_lw)}</td>
+                </tr>
+                <tr>
+                  <td><b>מנה טובה</b></td>
+                  <td>{best_dish_w or '—'}</td>
+                  <td>{best_dish_lw or '—'}</td>
+                  <td>—</td>
+                </tr>
+                <tr>
+                  <td><b>מנה לשיפור</b></td>
+                  <td>{worst_dish_w or '—'}</td>
+                  <td>{worst_dish_lw or '—'}</td>
+                  <td>—</td>
+                </tr>
+              </tbody>
+            </table>
+            """
+            st.markdown(html, unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
