@@ -1,4 +1,4 @@
-# app.py — ג'ירף – איכויות מזון (ללא טוסטים; "הקלדה ידנית…"; גרף עם תוויות מאוזנות וצבעים בהירים)
+# app.py — ג'ירף – איכויות מזון (ללא טוסטים; הקלדה ידנית מחוץ ל-select; גרף עם תוויות מאוזנות וצבעים בהירים)
 from __future__ import annotations
 import os, json, sqlite3
 from datetime import datetime, timedelta
@@ -39,7 +39,9 @@ CHEFS_BY_BRANCH: Dict[str, List[str]] = {
     "ראשל״צ": ["ג'או", "זאנג", "צ'ה", "ליו", "מא", "רן"],
     "חיפה": ["סונג", "לי", "ליו", "ג'או"],
     "רמה״ח": ["ין", "סי", "ליו", "הואן", "פרנק", "זאנג", "זאו לי"],
-    "רמהח":  ["ין", "סי", "ליו", "הואן", "פרנק", "זאנג", "זאו לי"],
+    "רמהח":  ["ין", "סי", "ליו", "הואן", "פרנק", "זאנג", "זאו לי"],  # אליאס
+    "לנדמרק": ["יו", "מא", "וואנג הואנבין", "וואנג ג'ינלאי", "ג'או", "אוליבר",
+               "זאנג", "בי", "יאנג זימינג", "יאנג רונגשטן", "דונג", "וואנג פוקוואן"],
 }
 
 DB_PATH = "food_quality.db"
@@ -99,6 +101,7 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
 .chip{padding:4px 10px; border:1px solid var(--green-100); border-radius:999px;
   font-weight:800; font-size:12px; color:#065f46; background:var(--green-50)}
 
+/* שדות */
 .stTextInput input, .stTextArea textarea{
   background:#fff !important; color:var(--text) !important;
   border-radius:12px !important; border:1px solid var(--border) !important; padding:10px 12px !important;}
@@ -109,7 +112,7 @@ body{ border:4px solid #000; border-radius:16px; margin:10px; }
   outline:none !important; box-shadow:0 0 0 2px rgba(16,185,129,.25) !important; border-color:var(--green-500) !important;}
 .stRadio [data-baseweb="radio"] svg{ color:#000 !important; fill:#000 !important; }
 
-/* פתיחת ה-select למטה */
+/* לפתוח select כלפי מטה */
 .stSelectbox {overflow:visible !important;}
 div[data-baseweb="select"] + div[role="listbox"]{ bottom:auto !important; top: calc(100% + 8px) !important; max-height:50vh !important; }
 
@@ -340,15 +343,18 @@ with st.form("quality_form", clear_on_submit=False):
             st.text_input("שם סניף", value=selected_branch, disabled=True)
 
     with colB:
-        # תמיד מאפשרים "הקלדה ידנית…" בנוסף לשמות ברירת המחדל של אותו סניף
-        base = ["— בחר —", "הקלדה ידנית…"]
-        names = CHEFS_BY_BRANCH.get(selected_branch, [])
-        chef_options = base + names
-        chef_choice = st.selectbox("שם הטבח *", options=chef_options, index=0, key="chef_select")
+        # ---- בחירה מחוץ ל-select: רשימה או הקלדה ידנית ----
+        chef_mode = st.radio("אופן הזנת שם טבח", ["בחירה מרשימה", "הקלדה ידנית"], horizontal=True, index=0)
+        chef_final = None
 
-        chef_manual = ""
-        if chef_choice == "הקלדה ידנית…":
-            chef_manual = st.text_input("שם הטבח — הקלדה ידנית *", value="")
+        if chef_mode == "בחירה מרשימה":
+            names = CHEFS_BY_BRANCH.get(selected_branch, [])
+            chef_choice = st.selectbox("שם הטבח *", options=["— בחר —"] + names, index=0, key="chef_select")
+            if chef_choice != "— בחר —":
+                chef_final = chef_choice
+        else:
+            chef_manual = st.text_input("שם הטבח — הקלדה ידנית *", key="chef_manual", placeholder="הקלד/י כאן את שם הטבח")
+            chef_final = chef_manual.strip() if chef_manual.strip() else None
 
     with colC:
         dish_options = ["— בחר —"] + DISHES
@@ -369,28 +375,20 @@ with st.form("quality_form", clear_on_submit=False):
     submitted = st.form_submit_button("שמור בדיקה")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# ולידציה ושמירה (ללא הודעות קופצות)
+# ולידציה ושמירה
 if submitted:
     if auth["role"] == "meta" and (not selected_branch or selected_branch == "— בחר —"):
         st.error("נא לבחור סניף.")
+    elif not chef_final:
+        st.error("נא לבחור שם טבח או להקליד ידנית.")
+    elif not dish or dish == "— בחר —":
+        st.error("נא לבחור שם מנה.")
+    elif not isinstance(score_choice, int):
+        st.error("נא לבחור ציון איכות.")
     else:
-        if chef_choice and chef_choice not in ("— בחר —", "הקלדה ידנית…"):
-            chef_final = chef_choice
-        elif chef_choice == "הקלדה ידנית…" and chef_manual.strip():
-            chef_final = chef_manual.strip()
-        else:
-            chef_final = None
-
-        if not chef_final:
-            st.error("נא לבחור שם טבח או להקליד ידנית.")
-        elif not dish or dish == "— בחר —":
-            st.error("נא לבחור שם מנה.")
-        elif not isinstance(score_choice, int):
-            st.error("נא לבחור ציון איכות.")
-        else:
-            insert_record(selected_branch, chef_final, dish, int(score_choice), notes, submitted_by=auth["role"])
-            refresh_df()
-            st.success("נשמר בהצלחה.")
+        insert_record(selected_branch, chef_final, dish, int(score_choice), notes, submitted_by=auth["role"])
+        refresh_df()
+        st.success("נשמר בהצלחה.")
 
 # =========================
 # --- WEEKLY BY BRANCH ----
@@ -476,23 +474,12 @@ if auth["role"] == "meta" and not df.empty:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### KPI רשת – 7 ימים אחרונים")
 
-    # 1) גרף עמודות ממוצע ציון לפי סניף — תוויות מאוזנות + צבעים בהירים יותר
+    # 1) גרף עמודות ממוצע ציון לפי סניף — תוויות מאוזנות + צבעים בהירים
     g = network_branch_avgs_last7(df)
     if not g.empty:
-        light_palette = [
-            "#cfe8ff",  # כחול בהיר מאד
-            "#d7fde7",  # ירוק-מנטה בהיר
-            "#fde2f3",  # ורוד בהיר מאד
-            "#fff3bf",  # צהוב-ונילה
-            "#e5e1ff",  # סגול בהיר מאד
-            "#c9faf3",  # טיל בהיר מאד
-            "#ffdede",  # אדמדם בהיר מאד
-            "#eaf7e5",  # ירקרק בהיר מאד
-        ]
-        x_axis = alt.Axis(
-            labelAngle=0, labelPadding=6, labelColor='#111', title=None,
-            labelOverlap="greedy", labelLimit=300, labelFontSize=12
-        )
+        light_palette = ["#cfe8ff", "#d7fde7", "#fde2f3", "#fff3bf", "#e5e1ff", "#c9faf3", "#ffdede", "#eaf7e5"]
+        x_axis = alt.Axis(labelAngle=0, labelPadding=6, labelColor='#111', title=None,
+                          labelOverlap="greedy", labelLimit=300, labelFontSize=12)
         chart = (
             alt.Chart(g)
             .mark_bar(size=36)
@@ -500,10 +487,8 @@ if auth["role"] == "meta" and not df.empty:
                 x=alt.X("branch:N", sort='-y', axis=x_axis),
                 y=alt.Y("avg:Q", scale=alt.Scale(domain=(0, 10)), title=None),
                 color=alt.Color("branch:N", legend=None, scale=alt.Scale(range=light_palette)),
-                tooltip=[
-                    alt.Tooltip("branch:N", title="סניף"),
-                    alt.Tooltip("avg:Q", title="ממוצע", format=".2f"),
-                ],
+                tooltip=[alt.Tooltip("branch:N", title="סניף"),
+                         alt.Tooltip("avg:Q", title="ממוצע", format=".2f")],
             )
             .properties(height=260)
             .configure_view(strokeWidth=0)
@@ -515,7 +500,7 @@ if auth["role"] == "meta" and not df.empty:
     # 2) טבח מוביל
     chef, chef_branch, chef_avg, chef_n = network_top_chef_last7(df, MIN_CHEF_WEEK_M)
 
-    # 3-4) מנה טובה/לשיפור
+    # 3-4) מנה טובה/לשיפור (לא מציגים לשיפור אם זהה לטובה)
     best_dish, worst_dish = network_best_worst_dish_last7(df, MIN_DISH_WEEK_M)
 
     def line(name, value):
@@ -597,5 +582,3 @@ if auth["role"] == "meta" and not df.empty:
             """
             st.markdown(html, unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
-
-# (סעיפי GPT וכו' – כמו אצלך; אפשר להשאיר/להסיר לפי הצורך)
