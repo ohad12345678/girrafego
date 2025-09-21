@@ -1,4 +1,4 @@
-# app.py — ג'ירף – איכויות מזון (ללא טוסטים; "הקלדה ידנית…"; גרף עם תוויות מאוזנות וצבעים בהירים)
+# app.py — ג'ירף – איכויות מזון (תיקון הקלדה ידנית + צבעי גרף בהירים ותוויות מאוזנות)
 from __future__ import annotations
 import os, json, sqlite3
 from datetime import datetime, timedelta
@@ -28,6 +28,7 @@ DISHES: List[str] = [
     "קארי דלעת", "סצ'ואן", "ביף רייס",
     "אורז מטוגן", "מאקי סלמון", "מאקי טונה",
     "ספייסי סלמון", "נודלס ילדים",
+    # תוספות
     "סלט תאילנדי", "סלט בריאות", "סלט דג לבן", "אגרול", "גיוזה", "וון",
 ]
 
@@ -39,7 +40,11 @@ CHEFS_BY_BRANCH: Dict[str, List[str]] = {
     "ראשל״צ": ["ג'או", "זאנג", "צ'ה", "ליו", "מא", "רן"],
     "חיפה": ["סונג", "לי", "ליו", "ג'או"],
     "רמה״ח": ["ין", "סי", "ליו", "הואן", "פרנק", "זאנג", "זאו לי"],
-    "רמהח":  ["ין", "סי", "ליו", "הואן", "פרנק", "זאנג", "זאו לי"],
+    "רמהח":  ["ין", "סי", "ליו", "הואן", "פרנק", "זאנג", "זאו לי"],  # אליאס
+    "לנדמרק": [
+        "יו", "מא", "וואנג הואנבין", "וואנג ג'ינלאי", "ג'או", "אוליבר",
+        "זאנג", "בי", "יאנג זימינג", "יאנג רונגשטן", "דונג", "וואנג פוקוואן",
+    ],
 }
 
 DB_PATH = "food_quality.db"
@@ -66,6 +71,7 @@ st.markdown("""
   --green-100:#d1fae5;
   --green-500:#10b981;
 }
+
 html, body, .main, .block-container{direction:rtl; background:var(--bg);}
 .main .block-container{font-family:"Rubik",-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
 /* מסגרת שחורה עבה סביב כל הדף */
@@ -215,7 +221,7 @@ def refresh_df():
     load_df.clear()
 
 def score_hint(x: int) -> str:
-    return "חלש" if x <= 3 else ("סביר" if x <= 6 else ("טוב" if x <= 8 else "מצוין"))
+    return "חלש" if x <= 3 else ("סביר" if x <= 6 else ("טוב" אם x <= 8 else "מצוין"))
 
 # === רשת 7 ימים ===
 def last7(df: pd.DataFrame) -> pd.DataFrame:
@@ -317,6 +323,26 @@ def require_auth() -> dict:
 auth = require_auth()
 
 # =========================
+# ---- CHEF MANUAL MODE ---
+# =========================
+CHEF_MANUAL_OPTION = "הקלדה ידנית…"
+if "chef_mode" not in st.session_state:
+    st.session_state.chef_mode = "list"   # "list" | "manual"
+if "chef_manual" not in st.session_state:
+    st.session_state.chef_manual = ""
+
+def _chef_select_changed():
+    """עוברים למצב הקלדה כשהאופציה נבחרת, סוגרים את הדרופדאון ע"י reset + rerun (חשוב לנייד)."""
+    sel = st.session_state.get("chef_select")
+    if sel == CHEF_MANUAL_OPTION:
+        st.session_state.chef_mode = "manual"
+        st.session_state.chef_select = "— בחר —"  # סוגר את הדרופדאון
+        st.rerun()
+
+def _chef_back_to_list():
+    st.session_state.chef_mode = "list"
+
+# =========================
 # -------- MAIN UI --------
 # =========================
 st.markdown('<div class="header-min"><p class="title">ג׳ירף – איכויות מזון</p></div>', unsafe_allow_html=True)
@@ -340,15 +366,28 @@ with st.form("quality_form", clear_on_submit=False):
             st.text_input("שם סניף", value=selected_branch, disabled=True)
 
     with colB:
-        # תמיד מאפשרים "הקלדה ידנית…" בנוסף לשמות ברירת המחדל של אותו סניף
-        base = ["— בחר —", "הקלדה ידנית…"]
-        names = CHEFS_BY_BRANCH.get(selected_branch, [])
-        chef_options = base + names
-        chef_choice = st.selectbox("שם הטבח *", options=chef_options, index=0, key="chef_select")
+        # רשימת טבחים לסניף + האופציה להקלדה ידנית (תמיד זמינה)
+        chef_options = ["— בחר —"]
+        if selected_branch and selected_branch != "— בחר —":
+            chef_options += CHEFS_BY_BRANCH.get(selected_branch, [])
+        chef_options += [CHEF_MANUAL_OPTION]
 
-        chef_manual = ""
-        if chef_choice == "הקלדה ידנית…":
-            chef_manual = st.text_input("שם הטבח — הקלדה ידנית *", value="")
+        st.selectbox(
+            "שם הטבח *",
+            options=chef_options,
+            index=0,
+            key="chef_select",
+            on_change=_chef_select_changed,
+            help="בחר/י מהרשימה או בחר/י 'הקלדה ידנית…' כדי להקליד שם חדש"
+        )
+
+        if st.session_state.chef_mode == "manual":
+            st.text_input(
+                "שם הטבח — הקלדה ידנית *",
+                key="chef_manual",
+                placeholder="הקלד/י כאן את שם הטבח",
+            )
+            st.button("חזרה לרשימה", on_click=_chef_back_to_list)
 
     with colC:
         dish_options = ["— בחר —"] + DISHES
@@ -369,17 +408,17 @@ with st.form("quality_form", clear_on_submit=False):
     submitted = st.form_submit_button("שמור בדיקה")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# ולידציה ושמירה (ללא הודעות קופצות)
+# ולידציה ושמירה
 if submitted:
     if auth["role"] == "meta" and (not selected_branch or selected_branch == "— בחר —"):
         st.error("נא לבחור סניף.")
     else:
-        if chef_choice and chef_choice not in ("— בחר —", "הקלדה ידנית…"):
-            chef_final = chef_choice
-        elif chef_choice == "הקלדה ידנית…" and chef_manual.strip():
-            chef_final = chef_manual.strip()
+        # קביעת שם הטבח
+        if st.session_state.chef_mode == "manual":
+            chef_final = (st.session_state.get("chef_manual") or "").strip()
         else:
-            chef_final = None
+            sel = st.session_state.get("chef_select")
+            chef_final = sel if sel and sel not in ("— בחר —", CHEF_MANUAL_OPTION) else ""
 
         if not chef_final:
             st.error("נא לבחור שם טבח או להקליד ידנית.")
@@ -476,7 +515,7 @@ if auth["role"] == "meta" and not df.empty:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### KPI רשת – 7 ימים אחרונים")
 
-    # 1) גרף עמודות ממוצע ציון לפי סניף — תוויות מאוזנות + צבעים בהירים יותר
+    # 1) גרף עמודות ממוצע ציון לפי סניף — תוויות מאוזנות וצבעים בהירים מאוד
     g = network_branch_avgs_last7(df)
     if not g.empty:
         light_palette = [
@@ -490,8 +529,13 @@ if auth["role"] == "meta" and not df.empty:
             "#eaf7e5",  # ירקרק בהיר מאד
         ]
         x_axis = alt.Axis(
-            labelAngle=0, labelPadding=6, labelColor='#111', title=None,
-            labelOverlap="greedy", labelLimit=300, labelFontSize=12
+            labelAngle=0,
+            labelPadding=6,
+            labelColor='#111',
+            title=None,
+            labelOverlap="greedy",
+            labelLimit=500,
+            labelFontSize=12,
         )
         chart = (
             alt.Chart(g)
@@ -597,5 +641,3 @@ if auth["role"] == "meta" and not df.empty:
             """
             st.markdown(html, unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
-
-# (סעיפי GPT וכו' – כמו אצלך; אפשר להשאיר/להסיר לפי הצורך)
